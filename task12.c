@@ -36,7 +36,7 @@ monitor_init(monitor_t* monitor){
 }
 
 
-static const int32_t count_of_loops = 10;
+static const int32_t COUNT_OF_LOOPS = 10;
 
 
 static void*
@@ -48,7 +48,7 @@ subroutine(void* context_){
     pthread_mutex_lock(my_mutex);
     pthread_cond_signal(my_cond);
       
-    for(int32_t i=0; i<count_of_loops; ++i) {
+    for(int32_t i=0; i<COUNT_OF_LOOPS; ++i) {
         pthread_cond_wait(my_cond, my_mutex);
         printf("%s\n", context->message);
         usleep(1000 * 500);

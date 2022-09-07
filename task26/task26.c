@@ -33,7 +33,7 @@ struct ConsumerContext{
 typedef struct ConsumerContext consumer_context_t;
 
 
-void*
+static void*
 producer(void* arg){
     producer_context_t* context = (producer_context_t*) arg;
 
@@ -57,7 +57,7 @@ enum {
 };
 
 
-void*
+static void*
 consumer(void* arg){
     consumer_context_t* context = (consumer_context_t*) arg;
 
