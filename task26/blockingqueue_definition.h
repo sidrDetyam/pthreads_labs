@@ -17,6 +17,7 @@
 struct BLOCKING_QUEUE_TYPE{
     ELEMENT_TYPE* items;
     
+    int is_destroyed;
     size_t count;
     size_t capacity;
     size_t take_index;
@@ -29,16 +30,16 @@ struct BLOCKING_QUEUE_TYPE{
 typedef struct BLOCKING_QUEUE_TYPE BLOCKING_QUEUE_TYPE;
 
 
-void
+int
 CONCAT(BLOCKING_QUEUE_PREFIX, _take)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item);
 
-void
+int
 CONCAT(BLOCKING_QUEUE_PREFIX, _put)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item);
 
 int
 CONCAT(BLOCKING_QUEUE_PREFIX, _init)(BLOCKING_QUEUE_TYPE* bq, size_t capacity);
 
-void
+int
 CONCAT(BLOCKING_QUEUE_PREFIX, _destroy)(BLOCKING_QUEUE_TYPE* bq);
 
 #undef ELEMENT_TYPE

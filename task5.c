@@ -15,13 +15,20 @@ struct Context{
 typedef struct Context context_t;
 
 
+static void 
+cancel_handler(void* ignore){
+    printf("меня отменили((((\n");
+}
+
 static void*
 subroutine(void* context_){
     context_t* context = (context_t*) context_;
-      
+
     for(;;) {
+        pthread_cleanup_push(cancel_handler, NULL);
         printf("%s\n", context->message);
         usleep(100);
+        pthread_cleanup_pop(0);
     }
 }
 

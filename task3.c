@@ -66,7 +66,13 @@ main(){
         return 0;
     }
 
-    pthread_join(thread1, NULL);
-    pthread_join(thread2, NULL); 
+    if(pthread_join(thread1, NULL)==-1){
+        perror("join fail");
+        exit(1);
+    }
+    if(pthread_join(thread2, NULL)==-1){
+        perror("join fail");
+        exit(1);
+    }
 	return 0;
 }

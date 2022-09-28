@@ -41,7 +41,10 @@ main(){
         return 0;
     }
 
-    pthread_join(thread, NULL);
+    if(pthread_join(thread, NULL)==-1){
+        perror("join fail");
+        exit(1);
+    }
     context.message = "-------";
     subroutine(&context);
 
