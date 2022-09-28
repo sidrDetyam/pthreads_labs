@@ -16,6 +16,39 @@ typedef char* charptr_t;
 #include "blockingqueue_implementation.h"
 
 
+struct queue{
+    
+};
+typedef struct queue queue;
+
+typedef bq_charptr_t_t queue;
+
+void mymsginit(queue *q){
+    if(bq_charptr_t_init(&bq, 10)==-1){
+        perror("init fail");
+        exit(1);
+    }
+}
+
+
+void mymsqdrop(queue *q){
+    if(bq_charptr_t_init(&bq, 10)==-1){
+        perror("init fail");
+        exit(1);
+    }
+}
+
+
+void mymsgdestroy(queue *q){
+
+}
+
+
+int mymsgput(queue *q, char *msg);
+int mymsgget(queue *q, char *buf, size_t bufsize);
+
+
+
 struct ProducerContext{
     bq_charptr_t_t* bq;
     char* text;

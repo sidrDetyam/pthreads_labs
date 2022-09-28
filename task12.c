@@ -26,13 +26,23 @@ typedef struct Context context_t;
 
 static void 
 monitor_init(monitor_t* monitor){
-    pthread_cond_init(&(monitor->cond), NULL);
+    if(pthread_cond_init(&(monitor->cond), NULL)==-1){
+        perror("pthread_cond_init");
+        exit(1);
+    }
 
 	static pthread_mutexattr_t mutex_attr;
-    pthread_mutexattr_init(&mutex_attr);
+    if(pthread_mutexattr_init(&mutex_attr)==-1){
+        exit(1);
+    }
     //зачем нам тут еррор-мьютекс?
-    pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK);
-    pthread_mutex_init(&(monitor->mutex), &mutex_attr);
+    if(pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK)==-1){
+        exit(1);
+    }
+    
+    if(pthread_mutex_init(&(monitor->mutex), &mutex_attr)==-1){
+        exit(1);
+    }
 }
 
 
@@ -45,7 +55,9 @@ subroutine(void* context_){
     pthread_mutex_t* my_mutex = &(context->my_monitor->mutex);
     pthread_cond_t* my_cond = &(context->my_monitor->cond);
 
-    pthread_mutex_lock(my_mutex);
+    if(pthread_mutex_lock(my_mutex)==-1){
+        exit(1);
+    }
     pthread_cond_signal(my_cond);
       
     for(int32_t i=0; i<COUNT_OF_LOOPS; ++i) {
