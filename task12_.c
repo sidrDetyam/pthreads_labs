@@ -63,24 +63,19 @@ subroutine(void* context_){
     context_t* context = (context_t*) context_;
     pthread_mutex_t* my_mutex = &(context->my_monitor->mutex);
     pthread_cond_t* my_cond = &(context->my_monitor->cond);
-    pthread_mutex_t* other_mutex = &(context->neighbor_monitor->mutex);
-    pthread_cond_t* other_cond = &(context->neighbor_monitor->cond);
 
-
-    if(pthread_mutex_lock(my_mutex)==-1){
-        exit(1);
-    }
-    pthread_cond_signal(my_cond);
       
     for(int32_t i=0; i<COUNT_OF_LOOPS; ++i) {
-        pthread_cond_wait(my_cond, my_mutex);
-        printf("%s\n", context->message);
+        if(pthread_mutex_lock(my_mutex)==-1){
+            exit(1);
+        }
 
-        CHECK_ERROR("lock", pthread_mutex_lock(other_mutex));
-        pthread_cond_signal(other_cond);
-        CHECK_ERROR("lock", pthread_mutex_unlock(other_mutex));
+        printf("%s\n", context->message);
+        usleep(1000 * 500);
+
+        pthread_cond_signal(my_cond);
+        pthread_mutex_unlock(my_mutex);
     }
-    pthread_mutex_unlock(my_mutex);
 
     return NULL;
 }
@@ -92,7 +87,7 @@ main(){
     monitor_init(&monitor1);
     monitor_init(&monitor2);
     context_t context1 = {&monitor1, &monitor2, "+++++"};
-    context_t context2 = {&monitor2, &monitor1, "-----"};
+    context_t context2 = {&monitor1, &monitor1, "-----"};
 
 	pthread_t thread1, thread2;
     pthread_attr_t thread_attr;
@@ -100,7 +95,6 @@ main(){
     CHECK_ERROR("setstacksize", pthread_attr_setstacksize(&thread_attr, PTHREAD_STACK_MIN));
 
     CHECK_ERROR("lock", pthread_mutex_lock(&(monitor1.mutex)));
-    CHECK_ERROR("lock", pthread_mutex_lock(&(monitor2.mutex)));
 
     if(pthread_create(&thread1, &thread_attr, subroutine, (void*) &context1)==-1 ||
         pthread_create(&thread2, &thread_attr, subroutine, (void*) &context2)==-1){
@@ -109,11 +103,9 @@ main(){
         return 0;
     }
 
+
     CHECK_ERROR("wait", pthread_cond_wait(&(monitor1.cond), &(monitor1.mutex)));
-    CHECK_ERROR("wait", pthread_cond_wait(&(monitor2.cond), &(monitor2.mutex)));
-    
-    pthread_cond_signal(&(monitor1.cond));
-    pthread_mutex_unlock(&(monitor2.mutex));
+    CHECK_ERROR("wait", pthread_cond_wait(&(monitor1.cond), &(monitor1.mutex)));
     CHECK_ERROR("unlock", pthread_mutex_unlock(&(monitor1.mutex)));
 
     pthread_join(thread1, NULL);

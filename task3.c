@@ -74,5 +74,10 @@ main(){
         perror("join fail");
         exit(1);
     }
+    if(pthread_mutex_destroy(&mutex)==-1){
+        perror("mutex destroy fail");
+        exit(1);
+    }
+
 	return 0;
 }
