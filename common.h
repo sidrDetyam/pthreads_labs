@@ -3,7 +3,7 @@
 
 #define CHECK_ERROR(message, code) \
 do{\
-    if(code != 0){ \
+    if(code == -1){ \
         perror(message); \
         exit(1); \
     } \

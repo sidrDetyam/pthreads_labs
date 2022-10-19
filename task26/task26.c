@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <limits.h>
 
+#include "../common.h"
 
 typedef char* charptr_t;
 #define ELEMENT_TYPE charptr_t
@@ -18,40 +19,42 @@ typedef bq_charptr_t_t queue;
 
 
 static void 
-mymsginit(queue *q){
-    if(bq_charptr_t_init(q, 10)==-1){
-        perror("init fail");
-        exit(1);
-    }
+mymsginit(queue *q)
+{
+    CHECK_ERROR("inin", bq_charptr_t_init(q, 10));
 }
 
 
 static void 
-mymsqdrop(queue *q){
-    if(bq_charptr_t_destroy(q)==-1){
-        perror("drop fail");
-        exit(1);
-    }
+mymsqdrop(queue *q)
+{
+    CHECK_ERROR("drop", bq_charptr_t_drop(q));
 }
 
 
 static void 
-mymsgdestroy(queue *q){
-
+mymsgdestroy(queue *q)
+{
+    CHECK_ERROR("destroy", bq_charptr_t_destroy(q));
 }
 
 
 static int 
-mymsgput(queue *q, char *msg){
-    return bq_charptr_t_put(q, &msg);
+mymsgput(queue *q, char *msg)
+{
+    int ret = bq_charptr_t_put(q, &msg);
+    CHECK_ERROR("put", ret);
+    return ret;
 }
 
 
 static int 
-mymsgget(queue *q, char *buf, size_t bufsize){
-    
+mymsgget(queue *q, char *buf, size_t bufsize)
+{
+    int ret = bq_charptr_t_take(q, &buf);
+    CHECK_ERROR("get", ret);
+    return ret;
 }
-
 
 
 struct ProducerContext{

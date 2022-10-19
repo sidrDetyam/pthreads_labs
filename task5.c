@@ -24,12 +24,12 @@ static void*
 subroutine(void* context_){
     context_t* context = (context_t*) context_;
 
+    pthread_cleanup_push(cancel_handler, NULL);
     for(;;) {
-        pthread_cleanup_push(cancel_handler, NULL);
         printf("%s\n", context->message);
         usleep(100);
-        pthread_cleanup_pop(0);
     }
+    pthread_cleanup_pop(0);
 }
 
 

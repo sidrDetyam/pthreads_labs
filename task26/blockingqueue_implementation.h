@@ -1,8 +1,14 @@
 
 int
-CONCAT(BLOCKING_QUEUE_PREFIX, _take)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item){
-
+CONCAT(BLOCKING_QUEUE_PREFIX, _take)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item)
+{
     if(pthread_mutex_lock(&(bq->mutex))==-1){
+        return -1;
+    }
+    if(bq->is_dropped){
+        return 0;
+    }
+    if(bq->is_destroyed){
         return -1;
     }
 
@@ -10,7 +16,7 @@ CONCAT(BLOCKING_QUEUE_PREFIX, _take)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item
         if(pthread_cond_wait(&(bq->not_empty), &(bq->mutex))==-1){
             return -1;
         }
-        if(bq->is_destroyed){
+        if(bq->is_dropped){
             if(pthread_mutex_unlock(&(bq->mutex))==-1){
                 return -1;
             }
@@ -35,9 +41,15 @@ CONCAT(BLOCKING_QUEUE_PREFIX, _take)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item
 
 
 int
-CONCAT(BLOCKING_QUEUE_PREFIX, _put)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item){
-    
+CONCAT(BLOCKING_QUEUE_PREFIX, _put)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item)
+{
     if(pthread_mutex_lock(&(bq->mutex))==-1){
+        return -1;
+    }
+    if(bq->is_dropped){
+        return 0;
+    }
+    if(bq->is_destroyed){
         return -1;
     }
 
@@ -46,7 +58,7 @@ CONCAT(BLOCKING_QUEUE_PREFIX, _put)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item)
             return -1;
         }
 
-        if(bq->is_destroyed){
+        if(bq->is_dropped){
             if(pthread_mutex_unlock(&(bq->mutex))==-1){
                 return -1;
             }
@@ -71,13 +83,14 @@ CONCAT(BLOCKING_QUEUE_PREFIX, _put)(BLOCKING_QUEUE_TYPE* bq, ELEMENT_TYPE* item)
 
 
 int
-CONCAT(BLOCKING_QUEUE_PREFIX, _init)(BLOCKING_QUEUE_TYPE* bq, size_t capacity){
-    
+CONCAT(BLOCKING_QUEUE_PREFIX, _init)(BLOCKING_QUEUE_TYPE* bq, size_t capacity)
+{    
     bq->items = malloc(sizeof(ELEMENT_TYPE) * capacity);
     if(bq->items==NULL){
         return -1;
     }
 
+    bq->is_dropped = 0;
     bq->is_destroyed = 0;
     bq->count = 0;
     bq->capacity = capacity;
@@ -95,11 +108,17 @@ CONCAT(BLOCKING_QUEUE_PREFIX, _init)(BLOCKING_QUEUE_TYPE* bq, size_t capacity){
 
 
 int
-CONCAT(BLOCKING_QUEUE_PREFIX, _destroy)(BLOCKING_QUEUE_TYPE* bq){
+CONCAT(BLOCKING_QUEUE_PREFIX, _drop)(BLOCKING_QUEUE_TYPE* bq)
+{
+    if(pthread_mutex_lock(&(bq->mutex))==-1){
+        return -1;
+    }
     if(bq->is_destroyed){
         return -1;
     }
-    bq->is_destroyed = 1;
+    if(bq->is_dropped){
+        return 0;
+    }
 
     if(pthread_cond_broadcast(&(bq->not_empty))==-1 || 
         pthread_cond_broadcast(&(bq->not_full))==-1){
@@ -107,8 +126,23 @@ CONCAT(BLOCKING_QUEUE_PREFIX, _destroy)(BLOCKING_QUEUE_TYPE* bq){
     }
     free(bq->items);
 
-    if(pthread_mutex_lock(&(bq->mutex))==-1 || 
-        pthread_cond_destroy(&(bq->not_empty))==-1 ||
+    return pthread_mutex_unlock(&(bq->mutex));
+}
+
+
+int
+CONCAT(BLOCKING_QUEUE_PREFIX, _destroy)(BLOCKING_QUEUE_TYPE* bq)
+{
+    if(pthread_mutex_lock(&(bq->mutex))==-1){
+        return -1;
+    }
+
+    if(bq->is_destroyed){
+        return -1;
+    }
+    bq->is_destroyed = 1;
+
+    if(pthread_cond_destroy(&(bq->not_empty))==-1 ||
         pthread_cond_destroy(&(bq->not_full))==-1 ||
         pthread_mutex_unlock(&(bq->mutex))==-1 ||
         pthread_mutex_destroy(&(bq->mutex))==-1){
