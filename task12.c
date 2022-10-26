@@ -9,7 +9,7 @@
 #include <limits.h>
 
 
-#define CHECK_ERROR(message, code) \
+#define CEM(message, code) \
 do{\
     if(code != 0){ \
         perror(message); \
@@ -64,7 +64,7 @@ static const int32_t COUNT_OF_LOOPS = 10;
 static void
 monitor_wait(monitor_t* monitor){
     do{
-        CHECK_ERROR("", pthread_cond_wait(&(monitor->cond), &(monitor->mutex)));
+        CEM("", pthread_cond_wait(&(monitor->cond), &(monitor->mutex)));
     }while(!monitor->flag);
     monitor->flag = 0;
 }
@@ -73,19 +73,19 @@ monitor_wait(monitor_t* monitor){
 static void
 monitor_signal(monitor_t* monitor){
     monitor->flag = 1;
-    CHECK_ERROR("", pthread_cond_signal(&(monitor->cond)));
+    CEM("", pthread_cond_signal(&(monitor->cond)));
 }
 
 
 static void
 monitor_lock(monitor_t* monitor){
-    CHECK_ERROR("", pthread_mutex_lock(&(monitor->mutex)));
+    CEM("", pthread_mutex_lock(&(monitor->mutex)));
 }
 
 
 static void
 monitor_unlock(monitor_t* monitor){
-    CHECK_ERROR("", pthread_mutex_unlock(&(monitor->mutex)));
+    CEM("", pthread_mutex_unlock(&(monitor->mutex)));
 }
 
 
@@ -122,8 +122,8 @@ main(){
 
 	pthread_t thread1, thread2;
     pthread_attr_t thread_attr;
-    CHECK_ERROR("attr_init", pthread_attr_init(&thread_attr));
-    CHECK_ERROR("setstacksize", pthread_attr_setstacksize(&thread_attr, PTHREAD_STACK_MIN));
+    CEM("attr_init", pthread_attr_init(&thread_attr));
+    CEM("setstacksize", pthread_attr_setstacksize(&thread_attr, PTHREAD_STACK_MIN));
 
     monitor_lock(&monitor1);
     monitor_lock(&monitor2);

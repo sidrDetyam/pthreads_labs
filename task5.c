@@ -20,7 +20,7 @@ cancel_handler(void* ignore){
     printf("меня отменили((((\n");
 }
 
-static void*
+_Noreturn static void*
 subroutine(void* context_){
     context_t* context = (context_t*) context_;
 

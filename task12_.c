@@ -9,7 +9,7 @@
 #include <limits.h>
 
 
-#define CHECK_ERROR(message, code) \
+#define CEM(message, code) \
 do{\
     if(code != 0){ \
         perror(message); \
@@ -38,12 +38,12 @@ typedef struct Context context_t;
 static void 
 monitor_init(monitor_t* monitor)
 {
-    CHECK_ERROR("", pthread_cond_init(&(monitor->cond), NULL));
+    CEM("", pthread_cond_init(&(monitor->cond), NULL));
 
 	static pthread_mutexattr_t mutex_attr;
-    CHECK_ERROR("", pthread_mutexattr_init(&mutex_attr));
-    CHECK_ERROR("", pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK));
-    CHECK_ERROR("", pthread_mutex_init(&(monitor->mutex), &mutex_attr));
+    CEM("", pthread_mutexattr_init(&mutex_attr));
+    CEM("", pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_ERRORCHECK));
+    CEM("", pthread_mutex_init(&(monitor->mutex), &mutex_attr));
 
     monitor->value = -1;
 }
@@ -56,10 +56,10 @@ static void
 monitor_wait(monitor_t* monitor, int expect)
 {
     do{
-        CHECK_ERROR("", pthread_cond_wait(&monitor->cond, &monitor->mutex));
+        CEM("", pthread_cond_wait(&monitor->cond, &monitor->mutex));
         //printf("v: %d e: %d\n", monitor->value, expect);
         if(monitor->value != expect){
-            CHECK_ERROR("", pthread_cond_signal(&monitor->cond));
+            CEM("", pthread_cond_signal(&monitor->cond));
         }
         else{
             break;
@@ -73,21 +73,21 @@ static void
 monitor_signal(monitor_t* monitor, int expect)
 {
     monitor->value = expect;
-    CHECK_ERROR("", pthread_cond_signal(&monitor->cond));
+    CEM("", pthread_cond_signal(&monitor->cond));
 }
 
 
 static void
 monitor_lock(monitor_t* monitor)
 {
-    CHECK_ERROR("", pthread_mutex_lock(&(monitor->mutex)));
+    CEM("", pthread_mutex_lock(&(monitor->mutex)));
 }
 
 
 static void
 monitor_unlock(monitor_t* monitor)
 {
-    CHECK_ERROR("", pthread_mutex_unlock(&(monitor->mutex)));
+    CEM("", pthread_mutex_unlock(&(monitor->mutex)));
 }
 
 
@@ -123,22 +123,22 @@ main()
 
 	pthread_t thread1, thread2;
     pthread_attr_t thread_attr;
-    CHECK_ERROR("attr_init", pthread_attr_init(&thread_attr));
-    CHECK_ERROR("setstacksize", pthread_attr_setstacksize(&thread_attr, PTHREAD_STACK_MIN));
+    CEM("attr_init", pthread_attr_init(&thread_attr));
+    CEM("setstacksize", pthread_attr_setstacksize(&thread_attr, PTHREAD_STACK_MIN));
 
     monitor_lock(monitor);
 
-    CHECK_ERROR("", pthread_create(&thread1, &thread_attr, subroutine, (void*) &context1));
+    CEM("", pthread_create(&thread1, &thread_attr, subroutine, (void*) &context1));
     monitor_wait(monitor, 0);
 
-    CHECK_ERROR("", pthread_create(&thread2, &thread_attr, subroutine, (void*) &context2));
+    CEM("", pthread_create(&thread2, &thread_attr, subroutine, (void*) &context2));
     monitor_wait(monitor, 0);
 
     monitor_signal(monitor, 1);
     monitor_unlock(monitor);
 
-    CHECK_ERROR("", pthread_join(thread1, NULL));
-    CHECK_ERROR("", pthread_join(thread2, NULL)); 
+    CEM("", pthread_join(thread1, NULL));
+    CEM("", pthread_join(thread2, NULL));
 
 	return 0;
 }

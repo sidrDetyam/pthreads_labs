@@ -1,17 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <errno.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <stdint.h>
 #include <limits.h>
+#include "common.h"
 
 
 struct Context{
     pthread_mutex_t* mutex;
-    const char const** message;
+    const char ** message;
 };
 typedef struct Context context_t;
 
@@ -20,16 +17,10 @@ static void*
 subroutine(void* context_){
     context_t* context = (context_t*) context_;
       
-    for(const char const** ptr = context->message; *ptr != NULL; ++ptr) {
-        if(pthread_mutex_lock(context->mutex)==-1){
-            perror("mutex lock error!");
-            exit(1);
-        }
+    for(const char ** ptr = context->message; *ptr != NULL; ++ptr) {
+        CEM("lock", pthread_mutex_lock(context->mutex));
         printf("%s\n", *ptr);
-        if(pthread_mutex_unlock(context->mutex)==-1){
-            perror("mutex unlock error!");
-            exit(1);
-        }
+        CEM("unlock", pthread_mutex_unlock(context->mutex));
     }
 
     return NULL;
@@ -40,14 +31,8 @@ int
 main(){
     pthread_mutex_t mutex;
 	static pthread_mutexattr_t mutex_attr;
-    if(pthread_mutexattr_init(&mutex_attr)==-1){
-        perror("attr init fail");
-        exit(1);
-    }
-    if(pthread_mutex_init(&mutex, &mutex_attr)==-1){
-        perror("mutex init fail");
-        exit(1);
-    }
+    CEM("", pthread_mutexattr_init(&mutex_attr));
+    CEM("", pthread_mutex_init(&mutex, &mutex_attr));
 
     const char* msg1[] = {"foo", "foo", "foo", "foo", "foo", "foo", "foo", NULL};
     const char* msg2[] = {"bar", "bar", "bar", "bar", NULL};
@@ -60,24 +45,11 @@ main(){
     pthread_attr_init(&thread_attr);
     pthread_attr_setstacksize(&thread_attr, PTHREAD_STACK_MIN*2);
 
-    if(pthread_create(&thread1, &thread_attr, subroutine, (void*) &context1)==-1 ||
-        pthread_create(&thread2, &thread_attr, subroutine, (void*) &context2)==-1){
-        perror("Creating threads fail");
-        return 0;
-    }
-
-    if(pthread_join(thread1, NULL)==-1){
-        perror("join fail");
-        exit(1);
-    }
-    if(pthread_join(thread2, NULL)==-1){
-        perror("join fail");
-        exit(1);
-    }
-    if(pthread_mutex_destroy(&mutex)==-1){
-        perror("mutex destroy fail");
-        exit(1);
-    }
+    CEM("", pthread_create(&thread1, &thread_attr, subroutine, (void*) &context1));
+    CEM("", pthread_create(&thread2, &thread_attr, subroutine, (void*) &context2));
+    CEM("", pthread_join(thread1, NULL));
+    CEM("", pthread_join(thread2, NULL));
+    CEM("", pthread_mutex_destroy(&mutex));
 
 	return 0;
 }

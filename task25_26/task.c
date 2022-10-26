@@ -12,30 +12,30 @@
 
 typedef char* charptr_t;
 #define ELEMENT_TYPE charptr_t
-#include "blockingqueue_definition.h"
+#include "task26/blockingqueue_definition.h"
 #define ELEMENT_TYPE charptr_t
-#include "blockingqueue_implementation.h"
+#include "task26/blockingqueue_implementation.h"
 typedef bq_charptr_t_t queue;
 
 
 static void 
 mymsginit(queue *q)
 {
-    CHECK_ERROR("inin", bq_charptr_t_init(q, 10));
+    CEM("init", bq_charptr_t_init(q, 10));
 }
 
 
 static void 
-mymsqdrop(queue *q)
+mymsgdrop(queue *q)
 {
-    CHECK_ERROR("drop", bq_charptr_t_drop(q));
+    CEM("drop", bq_charptr_t_drop(q));
 }
 
 
 static void 
 mymsgdestroy(queue *q)
 {
-    CHECK_ERROR("destroy", bq_charptr_t_destroy(q));
+    CEM("destroy", bq_charptr_t_destroy(q));
 }
 
 
@@ -43,16 +43,16 @@ static int
 mymsgput(queue *q, char *msg)
 {
     int ret = bq_charptr_t_put(q, &msg);
-    CHECK_ERROR("put", ret);
+    CEM("put", ret);
     return ret;
 }
 
 
 static int 
-mymsgget(queue *q, char *buf, size_t bufsize)
+mymsgget(queue *q, char **buf)
 {
-    int ret = bq_charptr_t_take(q, &buf);
-    CHECK_ERROR("get", ret);
+    int ret = bq_charptr_t_take(q, buf);
+    CEM("get", ret);
     return ret;
 }
 
@@ -75,15 +75,16 @@ typedef struct ConsumerContext consumer_context_t;
 
 
 static void*
-producer(void* arg){
+producer(void* arg)
+{
     producer_context_t* context = (producer_context_t*) arg;
 
     for(int32_t i=0; i < context->count; ++i){
-        bq_charptr_t_put(context->bq, &(context->text));
+        mymsgput(context->bq, context->text);
 
-        pthread_mutex_lock(context->mutex);
+        CEM("", pthread_mutex_lock(context->mutex));
         printf(" ++++++ %s put to queue\n", context->text);
-        pthread_mutex_unlock(context->mutex);
+        CEM("", pthread_mutex_unlock(context->mutex));
         usleep( 500000 + 1000 * 100 * rand()%20);
     }
 
@@ -104,11 +105,11 @@ consumer(void* arg){
 
     for(int i=0; i<COUNT_OF_CONSUMERS; ++i){
         charptr_t ptr;
-        bq_charptr_t_take(context->bq, &ptr);
+        mymsgget(context->bq, &ptr);
 
-        pthread_mutex_lock(context->mutex);
+        CEM("", pthread_mutex_lock(context->mutex));
         printf(" ------ %s get by consumer %d\n", ptr, context->consumer_id);
-        pthread_mutex_unlock(context->mutex);
+        CEM("", pthread_mutex_unlock(context->mutex));
         usleep( 1000000 + 1000 * 100 * rand()%40);
     }
 
@@ -117,18 +118,16 @@ consumer(void* arg){
 
 
 int 
-main(){
-
+main()
+{
     pthread_t producers_threads[COUNT_OF_PRODUCERS];
     pthread_t consumers_threads[COUNT_OF_CONSUMERS];
     pthread_attr_t thread_attr;
     pthread_attr_init(&thread_attr);
-    pthread_attr_setstacksize(&thread_attr, PTHREAD_STACK_MIN);
+    pthread_attr_setstacksize(&thread_attr, PTHREAD_STACK_MIN*10);
 
     bq_charptr_t_t bq;
-    if(bq_charptr_t_init(&bq, 10)==-1){
-        perror("init fail");
-    }
+    mymsginit(&bq);
 
     pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -169,7 +168,7 @@ main(){
     for(int i=0; i<COUNT_OF_PRODUCERS; ++i){
         free(producers_context[i].text);
     }
-    bq_charptr_t_destroy(&bq);
+    mymsgdestroy(&bq);
 
 	return 0;
 }
