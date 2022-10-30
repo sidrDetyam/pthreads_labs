@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <string.h>
+#include <signal.h>
 
 #include "../common.h"
 
@@ -118,15 +119,18 @@ subroutine(void *arg) {
     }
 }
 
+static void sigint_handler(int sig){
+    _exit(0);
+}
 
 int 
 main() {
-
     list_t list;
     list_init(&list);
 
     pthread_t sort_thread;
     CE(pthread_create(&sort_thread, NULL, subroutine, &list));
+    CE(signal(SIGINT, sigint_handler));
 
     for(int i=0; i<10000; ++i){
         char* buff = NULL;

@@ -9,7 +9,7 @@
 
 
 enum{
-    COUNT_OF_LOOPS = 10
+    COUNT_OF_LOOPS = 10000000
 };
 
 

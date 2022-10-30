@@ -17,6 +17,7 @@ typedef struct Context context_t;
 
 static void 
 cancel_handler(void* ignore){
+    pthread_exit(NULL);
     printf("меня отменили((((\n");
 }
 
@@ -46,7 +47,7 @@ main(){
         perror("Creating threads fail");
         return 0;
     }
-    sleep(2);
+    sleep(1);
     if(pthread_cancel(thread)==-1){
         perror("cancellation fail");
         exit(1);
