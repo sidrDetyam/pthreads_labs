@@ -10,7 +10,7 @@
 
 
 enum{
-    COUNT_OF_THREADS = 8,
+    COUNT_OF_THREADS = 4,
     STOP_POINTS = 1000
 };
 
@@ -34,19 +34,22 @@ subroutine(void *arg) {
 
     long double local_res = 0;
     int64_t i;
-    int is_end = 0;
-    for(i=0; !is_end; ++i) {
+    for(i=0; ; ++i) {
         local_res += get(i*COUNT_OF_THREADS + context->rank);
 
-        if(i % STOP_POINTS){
-            asm volatile ("lfence" ::: "memory");
-            is_end = *context->is_end;
+        if(i % STOP_POINTS == 0){
+            //asm volatile ("lfence" ::: "memory");
+            //volatile int *is_end
+            if(__sync_bool_compare_and_swap(context->is_end, 1, 1)){
+                break;
+            }
         }
     }
 
     CEM("spinlock", pthread_spin_lock(context->spinlock));
     *context->mx_iters = MAX(*context->mx_iters, i);
     CEM("spin unlock", pthread_spin_unlock(context->spinlock));
+    printf("thread rank: %d, iters: %ld\n", context->rank, i);
     int bw = pthread_barrier_wait(context->barrier);
     assert(bw==0 || bw == PTHREAD_BARRIER_SERIAL_THREAD);
 
@@ -65,7 +68,7 @@ static int is_end = 0;
 static void
 int_handler(int sig){
     assert(SIGINT == sig);
-    is_end = 1;
+    assert(__sync_bool_compare_and_swap(&is_end, 0, 1));
 }
 
 int

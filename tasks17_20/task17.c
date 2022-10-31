@@ -35,9 +35,11 @@ static void
 list_print(list_t* l){
     CE(pthread_mutex_lock(&l->mutex));
 
+    printf("===================================\n");
     for(list_node_t* it = l->term.next; it != NULL; it = it->next){
         printf("%s\n", it->str);
     }
+    printf("===================================\n");
 
     CE(pthread_mutex_unlock(&l->mutex));
 }
@@ -105,7 +107,7 @@ list_push_front(list_t* l, char* str){
 
 
 enum CONF{
-    SLEEP_DURATION
+    SLEEP_DURATION = 5
 };
 
 
@@ -120,6 +122,7 @@ subroutine(void *arg) {
 }
 
 static void sigint_handler(int sig){
+    assert(SIGINT == sig);
     _exit(0);
 }
 
@@ -130,12 +133,17 @@ main() {
 
     pthread_t sort_thread;
     CE(pthread_create(&sort_thread, NULL, subroutine, &list));
-    CE(signal(SIGINT, sigint_handler));
+
+    struct sigaction int_action;
+    int_action.sa_handler = sigint_handler;
+    CE(sigemptyset(&int_action.sa_mask));
+    int_action.sa_flags = 0;
+    CE(sigaction(SIGINT, &int_action, NULL));
 
     for(int i=0; i<10000; ++i){
         char* buff = NULL;
         size_t cnt;
-        getline(&buff, &cnt, stdin);
+        assert(getline(&buff, &cnt, stdin) != -1);
 
         if(strlen(buff)==1){
             list_print(&list);
