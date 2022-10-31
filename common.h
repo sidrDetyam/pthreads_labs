@@ -12,6 +12,7 @@ do{\
 #define CE(code) \
 do{\
     if(code != 0){ \
+        perror("something goes wrong...");\
         exit(1); \
     } \
 }while(0)

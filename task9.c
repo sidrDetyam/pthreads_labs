@@ -2,16 +2,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <linux/membarrier.h>
-#include <sys/syscall.h>
 #include <unistd.h>
+#include <signal.h>
+#include <assert.h>
 
 #include "common.h"
 
 
 enum{
-    COUNT_OF_THREADS = 4,
-    STOP_POINTS = 1000000
+    COUNT_OF_THREADS = 8,
+    STOP_POINTS = 1000
 };
 
 
@@ -20,11 +20,12 @@ struct Context{
     int rank;
     int* is_end;
     int64_t *mx_iters;
+    pthread_spinlock_t *spinlock;
     pthread_barrier_t *barrier;
 };
 typedef struct Context context_t;
 
-#define get(i__) (1.0 / (1.0 + (i__)*2.0) * ((i__) & 1? -1.0 : 1.0))
+#define get(i) (1.0 / (1.0 + (i)*2.0) * ((i) & 1? -1.0 : 1.0))
 #define MAX(X, Y) (((X) > (Y)) ? (X) : (Y))
 
 static void*
@@ -38,57 +39,70 @@ subroutine(void *arg) {
         local_res += get(i*COUNT_OF_THREADS + context->rank);
 
         if(i % STOP_POINTS){
-
+            asm volatile ("lfence" ::: "memory");
             is_end = *context->is_end;
-            CE(pthread_rwlock_unlock(context->rwlock));
         }
     }
-    CE(pthread_rwlock_wrlock(context->rwlock));
-    *context->mx_iters = MAX(*context->mx_iters, i);
-    CE(pthread_rwlock_unlock(context->rwlock));
 
-    CE(pthread_barrier_wait(context->barrier));
+    CEM("spinlock", pthread_spin_lock(context->spinlock));
+    *context->mx_iters = MAX(*context->mx_iters, i);
+    CEM("spin unlock", pthread_spin_unlock(context->spinlock));
+    int bw = pthread_barrier_wait(context->barrier);
+    assert(bw==0 || bw == PTHREAD_BARRIER_SERIAL_THREAD);
+
     int64_t mx = *context->mx_iters;
     for(; i < mx; ++i){
         local_res += get(i*COUNT_OF_THREADS + context->rank);
     }
 
     context->local_res = local_res;
-    return NULL;
+    return arg;
 }
 
 
-static int *is_end_ptr;
-static pthread_rwlock_t *rwlock_ptr;
+static int is_end = 0;
 
 static void
 int_handler(int sig){
-    CE(pthread_rwlock_rdlock(rwlock_ptr));
-    *is_end_ptr = 1;
-    CE(pthread_rwlock_unlock(rwlock_ptr));
+    assert(SIGINT == sig);
+    is_end = 1;
 }
 
 int
 main() {
-    int is_end = 0;
+    struct sigaction int_action;
+    int_action.sa_handler = int_handler;
+    CE(sigemptyset(&int_action.sa_mask));
+    int_action.sa_flags = 0;
+    CE(sigaction(SIGINT, &int_action, NULL));
 
+    pthread_spinlock_t spinlock;
+    pthread_barrier_t barrier;
+    CE(pthread_spin_init(&spinlock, PTHREAD_PROCESS_PRIVATE));
+    CE(pthread_barrier_init(&barrier, NULL, COUNT_OF_THREADS));
+    int64_t mx_iters = 0;
 
     context_t context[COUNT_OF_THREADS];
     pthread_t workers[COUNT_OF_THREADS];
     for(int i=0; i<COUNT_OF_THREADS; ++i){
         context[i].rank = i;
-        context[i].
+        context[i].is_end = &is_end;
+        context[i].spinlock = &spinlock;
+        context[i].barrier = &barrier;
+        context[i].mx_iters = &mx_iters;
         CE(pthread_create(workers+i, NULL, subroutine, context+i));
     }
 
-    double res = 0;
+    long double res = 0;
     for(int i=0; i<COUNT_OF_THREADS; ++i){
-        CE(pthread_join(workers[i], NULL));
-        res += context[i].res;
+        pthread_join(workers[i], NULL);
+        res += context[i].local_res;
     }
     res *= 4.0;
+    printf("\n%.18Lf\n", res);
 
-    printf("%.6f\n", res);
+    CE(pthread_barrier_destroy(&barrier));
+    CE(pthread_spin_destroy(&spinlock));
 
     return 0;
 }
