@@ -38,8 +38,6 @@ subroutine(void *arg) {
         local_res += get(i*COUNT_OF_THREADS + context->rank);
 
         if(i % STOP_POINTS == 0){
-            //asm volatile ("lfence" ::: "memory");
-            //volatile int *is_end
             if(__sync_bool_compare_and_swap(context->is_end, 1, 1)){
                 break;
             }
@@ -98,7 +96,7 @@ main() {
 
     long double res = 0;
     for(int i=0; i<COUNT_OF_THREADS; ++i){
-        pthread_join(workers[i], NULL);
+        CE(pthread_join(workers[i], NULL));
         res += context[i].local_res;
     }
     res *= 4.0;
