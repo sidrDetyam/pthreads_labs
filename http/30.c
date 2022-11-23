@@ -63,6 +63,18 @@ write_(const char* buff, size_t buff_size, int fd, size_t mx_count_of_lines){
 }
 
 
+struct Context{
+
+};
+typedef struct Context context_t;
+
+
+static void*
+subroutine(void* arg){
+    context_t co
+}
+
+
 int
 main(int argc, __attribute__((unused)) char *argv[]){
 
