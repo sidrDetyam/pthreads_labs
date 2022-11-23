@@ -45,17 +45,25 @@ list_init(list_t *l) {
 
 static void
 list_print(list_t *l) {
-    CE(pthread_mutex_lock(&l->mutex));
-    while(l->status != FREE){
-        CE(pthread_cond_wait(&l->cond, &l->mutex));
-    }
-    l->status = UPDATING;
-    CE(pthread_mutex_unlock(&l->mutex));
 
     printf("===================================\n");
-    for (list_node_t *it = l->term.next; it != NULL; it = it->next) {
-        printf("%s\n", it->str);
-    }
+    CE(pthread_mutex_lock(&l->term.mutex));
+    list_node_t *it = &l->term->ne;
+
+
+
+    while(1){
+        if(it->next != NULL){
+            printf("%s\n", it->next->str);
+            it = it->next;
+            CE(pthread_mutex_lock(&it->next->mutex));
+            CE(pthread_mutex_unlock(&it->mutex));
+            continue;
+        }
+        break;
+    };
+    CE(pthread_mutex_unlock(&l->term.mutex));
+
     printf("===================================\n");
 
     CE(pthread_mutex_lock(&l->mutex));
