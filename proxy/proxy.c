@@ -7,6 +7,7 @@
 #include <netdb.h>
 #include <poll.h>
 #include <limits.h>
+#include <pthread.h>
 
 
 #include "common.h"
@@ -74,7 +75,7 @@ read_req(request_t *req, int fd, char **ppos_, char **rpos_) {
     while (1) {
         ssize_t cnt = read(fd, rpos, 100000);
         rpos += cnt;
-        if (cnt == -1 || cnt ==0 ) {
+        if (cnt == -1) {
             return ERROR;
         }
 
@@ -113,7 +114,10 @@ read_req(request_t *req, int fd, char **ppos_, char **rpos_) {
             vheader_t_push_back(&req->headers, &header);
         }
         if (status == END_OF_HEADER) {
-            ASSERT(strcmp(req->type, "GET") == 0);
+            //ASSERT(strcmp(req->type, "GET") == 0);
+            if(strcmp(req->type, "GET") != 0){
+                return ERROR;
+            }
             *ppos_ = (char *) ppos;
             *rpos_ = (char *) rpos;
             return SUCCESS;
@@ -173,7 +177,10 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
         if (status == END_OF_HEADER) {
             header_t *cl = find_header(&response->headers, "Content-Length");
             header_t *ch = find_header(&response->headers, "Transfer-Encoding");
-            ASSERT(cl != NULL || ch != NULL);
+            //ASSERT(cl != NULL || ch != NULL);
+            if(cl == NULL && ch == NULL){
+                return ERROR;
+            }
 
             if (cl != NULL) {
                 contlen = (size_t) atoi(cl->value);
@@ -209,7 +216,7 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
         size_t cc = rpos - ppos;
         read_n(fd, rpos, contlen - cc);
         ppos += contlen;
-        rpos = ppos;
+        rpos +=contlen - cc;
 
 //        while (rpos - ppos < contlen) {
 //            ssize_t cnt = read(fd, rpos, 100000);
@@ -230,11 +237,11 @@ void *
 handler(void *arg) {
     context_t *context = (context_t *) arg;
 
-    char *client_buff = malloc(1000000);
-    char *server_buff = malloc(1000000);
+    char *client_buff = malloc(30000000);
+    char *server_buff = malloc(30000000);
 
-    memset(client_buff, 0, 1000000);
-    memset(server_buff, 0, 1000000);
+    memset(client_buff, 0, 30000000);
+    memset(server_buff, 0, 30000000);
 
     char *crpos = client_buff;
     char *srpos = server_buff;
@@ -258,9 +265,12 @@ handler(void *arg) {
                 close(host_fd);
             }
             close(context->fd);
+            free(server_buff);
+            free(client_buff);
             return NULL;
         }
 
+        int attemps = 3;
         while(1) {
             if (host_fd == -1) {
                 host_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -278,6 +288,13 @@ handler(void *arg) {
             if (st == ERROR) {
                 printf("response ERROR\n");
                 close(host_fd);
+                attemps--;
+                if(attemps == 0){
+                    close(host_fd);
+                    free(server_buff);
+                    free(client_buff);
+                    return NULL;
+                }
                 host_fd = -1;
                 continue;
             }
@@ -287,9 +304,6 @@ handler(void *arg) {
 
         size_t cc = sppos - sst;
         write_n(context->fd, sst, cc);
-
-        close(context->fd);
-        close(host_fd);
     }
     return NULL;
 }
@@ -302,41 +316,28 @@ int main() {
     char *hello = "Hello from server";
 
     servsock_t servsock;
-    ASSERT(create_servsock(8080, 3, &servsock) == SUCCESS);
+    ASSERT(create_servsock(8080, 10, &servsock) == SUCCESS);
     int fd;
 
     while (1) {
         ASSERT((fd = accept_servsock(&servsock)) != ERROR);
-        context_t context = {fd};
-        handler(&context);
+        context_t* context = malloc(sizeof(context_t));
+        context->fd = fd;
+
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 250;
+        if (setsockopt (fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                        sizeof(timeout)) < 0){
+            perror("timeout");
+            exit(1);
+        }
+
+        pthread_t t;
+//        handler(context);
+        printf("connetct!!\n");
+        pthread_create(&t, NULL, handler, context);
     }
-//    read(fd, buffer, 100000);
-//    printf("%s\n", buffer);
-//
-//    request_t req;
-//    request_init(&req);
-//    const char *cur = buffer;
-//    parse_req_type(&cur, &req);
-//
-//    while (1) {
-//        header_t header;
-//        int status = parse_next_header(&cur, &header);
-//
-//        if (status == PARSING_ERROR || status == NO_END_OF_LINE) {
-//            printf("bruuuh");
-//            exit(1);
-//        }
-//
-//        vheader_t_push_back(&req.headers, &header);
-//        if (status == END_OF_HEADER) {
-//            break;
-//        }
-//    }
-//
-//    for (size_t i = 0; i < req.headers.cnt; ++i) {
-//        header_t *header = vheader_t_get(&req.headers, i);
-//        printf(" - %s :: %s\n", header->type, header->value);
-//    }
 
     close(fd);
     close_servsock(&servsock);
