@@ -25,6 +25,14 @@ struct REQUEST{
 };
 typedef struct REQUEST request_t;
 
+struct RESPONSE{
+    char* version;
+    char* code;
+    vheader_t headers;
+    char* body;
+};
+typedef struct RESPONSE response_t;
+
 void
 request_init(request_t* request);
 
@@ -49,5 +57,11 @@ parse_next_header(const char **buf, header_t* header);
 
 int
 parse_req_type(const char** buf, request_t* request);
+
+void
+response_init(response_t* response);
+
+int
+parse_response_code(const char** buf, response_t* response);
 
 #endif //PTHREAD_HTTP_HEADER_PARSER_H

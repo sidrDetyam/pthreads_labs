@@ -84,3 +84,20 @@ find_header(vheader_t *headers, const char* type){
 
     return NULL;
 }
+
+void
+response_init(response_t* response){
+    vheader_t_init(&response->headers);
+}
+
+int
+parse_response_code(const char** buf, response_t* response){
+    const char* cur = *buf;
+    const char* crlf = strstr(cur, "\r\n");
+    ASSERT_RETURN2(crlf != NULL, NO_END_OF_LINE);
+
+    //TODO
+
+    *buf = crlf+2;
+    return OK;
+}
