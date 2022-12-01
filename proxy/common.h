@@ -10,10 +10,13 @@ enum STATUS{
     SUCCESS = 0
 };
 
+
 #define ASSERT(cond__) \
 do{\
     if(!(cond__)){ \
-        perror("something goes wrong...");\
+        perror("something goes wrong..."); \
+        printf(#cond__);                   \
+        printf("\n");  \
         exit(1); \
     } \
 }while(0)

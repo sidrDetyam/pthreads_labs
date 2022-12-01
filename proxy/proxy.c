@@ -34,6 +34,37 @@ struct ConnectionHandlerContext {
 typedef struct ConnectionHandlerContext context_t;
 
 
+void write_n(int fd, const char *buff, size_t size) {
+    size_t writen = 0;
+    while (writen < size) {
+        ssize_t cnt = write(fd, buff, size - writen);
+        ASSERT(cnt != -1);
+        writen += cnt;
+    }
+}
+
+void read_n(int fd, char *buff, size_t size) {
+    size_t readen = 0;
+    while (readen < size) {
+        ssize_t cnt = read(fd, buff, size - readen);
+        ASSERT(cnt != -1 && cnt != 0);
+        readen += cnt;
+    }
+}
+
+size_t read_while(int fd, char *buff) {
+    size_t readen = 0;
+    while (1) {
+        ssize_t cnt = read(fd, buff, 1);
+        readen += 1;
+        ASSERT(cnt != -1);
+        if (cnt == 0) {
+            return readen;
+        }
+    }
+}
+
+
 int
 read_req(request_t *req, int fd, char **ppos_, char **rpos_) {
     request_init(req);
@@ -99,7 +130,7 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
     while (1) {
         ssize_t cnt = read(fd, rpos, 100000);
         rpos += cnt;
-        if (cnt == -1 || cnt == 0) {
+        if (cnt == -1) {
             return ERROR;
         }
 
@@ -117,8 +148,8 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
     }
 
     int isf = 0;
-    const char *end_of_headers;
-    size_t contlen;
+    int is_chunked = 0;
+    size_t contlen = 0;
     while (1) {
         if (isf) {
             ssize_t cnt = read(fd, rpos, 100000);
@@ -140,35 +171,54 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
             vheader_t_push_back(&response->headers, &header);
         }
         if (status == END_OF_HEADER) {
-            header_t *h = find_header(&response->headers, "Content-Length");
-            ASSERT(h != NULL);
-            contlen = (size_t) atoi(h->value);
+            header_t *cl = find_header(&response->headers, "Content-Length");
+            header_t *ch = find_header(&response->headers, "Transfer-Encoding");
+            ASSERT(cl != NULL || ch != NULL);
+
+            if (cl != NULL) {
+                contlen = (size_t) atoi(cl->value);
+            } else {
+                is_chunked = 1;
+            }
             break;
         }
     }
 
-    size_t cc = rpos - ppos;
-    while (rpos - ppos < contlen) {
-        ssize_t cnt = read(fd, rpos, 100000);
-        rpos += cnt;
-        if (cnt == 0 || cnt == -1) {
-            return ERROR;
+    if (is_chunked) {
+        while (1) {
+            char *crln = strstr(ppos, "\r\n");
+            char num[100];
+            memcpy(num, ppos, crln - ppos);
+            num[crln - ppos] = '\0';
+            long chunkSize = strtol(num, NULL, 16);
+            ppos = crln + 2;
+
+            size_t nn = rpos - ppos;
+            if (nn < chunkSize + 2) {
+                read_n(fd, rpos, chunkSize + 2 - nn);
+                rpos += chunkSize + 2 - (rpos - ppos);
+            }
+            ppos += chunkSize + 2;
+
+            if (chunkSize == 0) {
+                break;
+            }
+            rpos += read(fd, rpos, 100);
+        }
+    } else {
+        size_t cc = rpos - ppos;
+        while (rpos - ppos < contlen) {
+            ssize_t cnt = read(fd, rpos, 100000);
+            rpos += cnt;
+            if (cnt == 0 || cnt == -1) {
+                return ERROR;
+            }
         }
     }
 
     *ppos_ = (char *) ppos;
     *rpos_ = (char *) rpos;
     return SUCCESS;
-}
-
-
-void write_n(int fd, const char* buff, size_t size){
-    size_t writen = 0;
-    while(writen < size){
-        ssize_t cnt = write(fd, buff, size - writen);
-        ASSERT(cnt != -1);
-        writen += cnt;
-    }
 }
 
 
@@ -179,42 +229,50 @@ handler(void *arg) {
     char *client_buff = malloc(1000000);
     char *server_buff = malloc(1000000);
 
+    memset(client_buff, 0, 1000000);
+    memset(server_buff, 0, 1000000);
+
     char *crpos = client_buff;
-    char *cppos = client_buff;
-
     char *srpos = server_buff;
-    char *sppos = server_buff;
 
-    request_t req;
-    response_t response;
+    char *cppos = crpos;
+    char *sppos = srpos;
 
-    int st = read_req(&req, context->fd, &cppos, &crpos);
-    if (st == ERROR) {
-        printf("ERROR\n");
-        return NULL;
+    int host_fd = -1;
+    while (1) {
+
+        request_t req;
+        response_t response;
+
+        int st = read_req(&req, context->fd, &cppos, &crpos);
+        if (st == ERROR) {
+            printf("ERROR\n");
+            return NULL;
+        }
+
+        if (host_fd == -1) {
+            host_fd = socket(AF_INET, SOCK_STREAM, 0);
+            ASSERT(host_fd >= 0);
+
+            header_t *host_name = find_header(&req.headers, "Host");
+            ASSERT(host_name != NULL);
+
+            struct sockaddr_in server_addr;
+            name2addr(host_name->value, 80, &server_addr);
+            ASSERT(connect(host_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == 0);
+        }
+
+        write_n(host_fd, client_buff, cppos - client_buff);
+
+        st = read_response(&response, host_fd, &sppos, &srpos);
+        if (st == ERROR) {
+            printf("ERROR\n");
+            return NULL;
+        }
+
+        size_t cc = srpos - server_buff;
+        write_n(context->fd, server_buff, cc);
     }
-
-    int host_fd = socket(AF_INET, SOCK_STREAM, 0);
-    ASSERT(host_fd >= 0);
-
-    header_t *host_name = find_header(&req.headers, "Host");
-    ASSERT(host_name != NULL);
-
-    struct sockaddr_in server_addr;
-    name2addr(host_name->value, 80, &server_addr);
-    ASSERT(connect(host_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == 0);
-
-    write_n(host_fd, client_buff, cppos - client_buff);
-
-    st = read_response(&response, host_fd, &sppos, &srpos);
-    if (st == ERROR) {
-        printf("ERROR\n");
-        return NULL;
-    }
-
-    size_t cc = srpos - server_buff;
-    write_n(context->fd, server_buff, cc);
-
     return NULL;
 }
 
@@ -228,11 +286,12 @@ int main() {
     servsock_t servsock;
     ASSERT(create_servsock(8080, 3, &servsock) == SUCCESS);
     int fd;
-    ASSERT((fd = accept_servsock(&servsock)) != ERROR);
 
-    context_t context = {fd};
-    handler(&context);
-
+    while (1) {
+        ASSERT((fd = accept_servsock(&servsock)) != ERROR);
+        context_t context = {fd};
+        handler(&context);
+    }
 //    read(fd, buffer, 100000);
 //    printf("%s\n", buffer);
 //
