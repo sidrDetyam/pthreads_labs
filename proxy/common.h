@@ -25,6 +25,13 @@ do{\
     } \
 }while(0)
 
+#define ASSERT_RETURN2(cond__, ret__) \
+do{\
+    if(!(cond__)){ \
+        return ret__; \
+    } \
+}while(0)
+
 #define ASSERT_RETURN_C(cond__, on_fail__) \
 do{\
     if(!(cond__)){ \
@@ -33,8 +40,6 @@ do{\
     } \
 }while(0)
 
-#define MAX(a__, b__) ((a__) < (b__) ? (b__) : (a__))
 
-#define MIN(a__, b__) ((a__) > (b__) ? (b__) : (a__))
 
 #endif //PTHREAD_COMMON_H

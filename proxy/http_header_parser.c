@@ -8,81 +8,79 @@
 
 #define ELEMENT_TYPE header_t
 #include "CVector_impl.h"
+#include "common.h"
 
 void
-parser_init(parser_t* parser, const char* buff){
-    parser->buff = buff;
-    parser->pos = 0;
-    parser->is_req_type_parsed = 0;
-    parser->is_parsed = 0;
-    vheader_t_init(&parser->headers);
+request_init(request_t* request){
+    vheader_t_init(&request->headers);
 }
 
-void
-parser_destroy(parser_t* parser){
-
-}
-
-static const char*
-curr(parser_t* parser){
-    return parser->buff + parser->pos;
-}
-
-static void
-set_req_type(parser_t* parser, const char* type, size_t type_len){
-    if(strncmp("GET", type, type_len) == 0){
-        parser->req_type = GET;
-        return;
-    }
-    parser->req_type = UNKNOWN;
+__attribute__((unused)) void
+request_destroy(request_t* request){
+    vheader_t_free(&request->headers);
 }
 
 int
-parse_next(parser_t* parser){
-    if(parser->is_parsed){
-        return PARSED;
-    }
-    const char* end = strstr(curr(parser), "\r\n");
-    if(end == NULL){
-        return NO_END_OF_LINE;
+parse_req_type(const char** buf, request_t* request){
+    const char* cur = *buf;
+    const char* crlf = strstr(cur, "\r\n");
+    ASSERT_RETURN2(crlf != NULL, NO_END_OF_LINE);
+
+    const char* ws1 = strstr(cur, " ");
+    ASSERT_RETURN2(ws1 != NULL && ws1 < crlf, PARSING_ERROR);
+    const char* ws2 = strstr(ws1+1, " ");
+    ASSERT_RETURN2(ws2 != NULL && ws2 < crlf, PARSING_ERROR);
+
+    ASSERT((request->type = malloc(ws1 - cur + 1)) != NULL);
+    memcpy(request->type, cur, ws1 - cur);
+    request->type[ws1 - cur] = '\0';
+
+    ASSERT((request->uri = malloc(ws2 - ws1)) != NULL);
+    memcpy(request->uri, ws1 + 1, ws2 - ws1 - 1);
+    request->uri[ws2-ws1-1] = '\0';
+
+    ASSERT((request->version = malloc(crlf - ws2)) != NULL);
+    memcpy(request->version, ws2 + 1, crlf - ws2 - 1);
+    request->version[crlf-ws2-1] = '\0';
+
+    *buf = crlf+2;
+    return OK;
+}
+
+int
+parse_next_header(const char **buf, header_t* header){
+    const char* cur = *buf;
+    const char* crlf = strstr(cur, "\r\n");
+    ASSERT_RETURN2(crlf != NULL, NO_END_OF_LINE);
+
+    if(crlf == cur){
+        *buf += 2;
+        return END_OF_HEADER;
     }
 
-    if(!parser->is_req_type_parsed){
-        const char* ws = strstr(curr(parser), " ");
-        if(ws == NULL){
-            return PARSING_ERROR;
+    const char* sep = strstr(cur, ": ");
+    ASSERT_RETURN2(sep != NULL && sep < crlf, PARSING_ERROR);
+
+    header->type = malloc(sep - cur + 1);
+    memcpy(header->type, cur, sep - cur);
+    header->type[sep-cur] = '\0';
+
+    header->value = malloc(crlf - sep - 1);
+    memcpy(header->value, sep+2, crlf - sep - 2);
+    header->value[crlf - sep - 2] = '\0';
+
+    *buf = crlf+2;
+    return OK;
+}
+
+header_t*
+find_header(vheader_t *headers, const char* type){
+    for(size_t i=0; i<headers->cnt; ++i){
+        header_t* hi = vheader_t_get(headers, i);
+        if(strcmp(hi->type, type) == 0){
+            return hi;
         }
-        set_req_type(parser, curr(parser), ws - curr(parser));
-        const char* ws2 = strstr(ws+1, " ");
-        if(ws2 == NULL){
-            return PARSING_ERROR;
-        }
-        parser->uri = malloc(ws2 - ws);
-        parser->uri[ws2-ws-1] = '\0';
-        memcpy(parser->uri, ws + 1, ws2 - ws - 1);
-
-        parser->pos += end - curr(parser) + 2;
-        parser->is_req_type_parsed = 1;
-        return HAS_NEXT;
     }
 
-    if(end == curr(parser)){
-        parser->is_parsed = 1;
-        return PARSED;
-    }
-
-    const char* sep = strstr(curr(parser), ": ");
-    if(sep == NULL){
-        return PARSING_ERROR;
-    }
-
-    header_t header;
-    header.type = curr(parser);
-    header.tlen = sep - curr(parser);
-    header.value = sep+2;
-    header.vlen = end - (sep+2);
-    vheader_t_push_back(&parser->headers, &header);
-    parser->pos += end - curr(parser) + 2;
-
-    return HAS_NEXT;
+    return NULL;
 }

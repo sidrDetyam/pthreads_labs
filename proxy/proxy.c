@@ -28,6 +28,79 @@ name2addr(const char* host_name, uint16_t host_port, struct sockaddr_in* sock_ad
 }
 
 
+struct ConnectionHandlerContext{
+    int fd;
+};
+typedef struct ConnectionHandlerContext context_t;
+
+
+void*
+handler(void* arg){
+    context_t* context = (context_t*) arg;
+
+    char* buffer = malloc(1000000);
+    char* rstart = buffer;
+    char* rpos = buffer;
+    const char* ppos = buffer;
+    request_t req;
+    request_init(&req);
+
+    volatile int tparsed = 0;
+    volatile int host_fd = -1;
+    while(1){
+        ssize_t cnt = read(context->fd, rpos, 100000);
+        rpos += cnt;
+
+        if(cnt == 0 || cnt == -1){
+            printf("end: %zd\n", cnt);
+            break;
+        }
+
+        if(!tparsed) {
+            int status = parse_req_type(&ppos, &req);
+            if (status == NO_END_OF_LINE) {
+                continue;
+            }
+            if(status == PARSING_ERROR){
+                printf("error\n");
+                return NULL;
+            }
+            tparsed = 1;
+        }
+
+        header_t header;
+        int status = parse_next_header(&ppos, &header);
+        if(status == PARSING_ERROR){
+            printf("error");
+            return NULL;
+        }
+        if(status == NO_END_OF_LINE){
+            continue;
+        }
+        if(status == OK){
+            vheader_t_push_back(&req.headers, &header);
+        }
+        if(status == END_OF_HEADER) {
+            if (host_fd == -1) {
+                host_fd = socket(AF_INET, SOCK_STREAM, 0);
+                ASSERT(host_fd >= 0);
+
+                header_t *host_name = find_header(&req.headers, "Host");
+                ASSERT(host_name != NULL);
+
+                struct sockaddr_in server_addr;
+                name2addr(host_name->value, 80, &server_addr);
+                ASSERT(connect(host_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == 0);
+            }
+
+            
+        }
+
+        break;
+    }
+}
+
+
 int main(){
 
     char *buffer = malloc(100000);
@@ -42,26 +115,29 @@ int main(){
     read(fd, buffer, 100000);
     printf("%s\n", buffer);
 
-    parser_t parser;
-    parser_init(&parser, buffer);
+    request_t req;
+    request_init(&req);
+    const char* cur = buffer;
+    parse_req_type(&cur, &req);
+
     while(1){
-        int status = parse_next(&parser);
-        if(status == PARSED){
-            break;
+        header_t header;
+        int status = parse_next_header(&cur, &header);
+
+        if(status == PARSING_ERROR || status == NO_END_OF_LINE){
+            printf("bruuuh");
+            exit(1);
         }
-        if(status != HAS_NEXT){
-            printf("bruuh\n");
+
+        vheader_t_push_back(&req.headers, &header);
+        if(status == END_OF_HEADER){
             break;
         }
     }
 
-    for(size_t i=0; i < parser.headers.cnt; ++i){
-        header_t* header = vheader_t_get(&parser.headers, i);
-        write(1, header->type, header->tlen);
-        printf("  ::::  ");
-        fflush(stdout);
-        write(1, header->value, header->vlen);
-        printf("\n");
+    for(size_t i=0; i < req.headers.cnt; ++i){
+        header_t* header = vheader_t_get(&req.headers, i);
+        printf(" - %s :: %s\n", header->type, header->value);
     }
 
     close(fd);

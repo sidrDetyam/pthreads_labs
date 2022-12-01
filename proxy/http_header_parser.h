@@ -7,50 +7,47 @@
 
 #include<stdlib.h>
 
-enum REQUEST_TYPE{
-    GET,
-    UNKNOWN
-};
-
 struct HEADER{
-    const char* type;
-    size_t tlen;
-    const char* value;
-    size_t vlen;
+    char* type;
+    char* value;
 };
 typedef struct HEADER header_t;
 
 #define ELEMENT_TYPE header_t
 #include "CVector_def.h"
 
-
-struct PARSER{
-    int is_req_type_parsed;
-    int req_type;
+struct REQUEST{
+    char* type;
     char* uri;
-
-    int is_parsed;
-    size_t pos;
-    const char* buff;
+    char* version;
     vheader_t headers;
+    char* body;
 };
-typedef struct PARSER parser_t;
+typedef struct REQUEST request_t;
 
 void
-parser_init(parser_t* parser, const char* buff);
+request_init(request_t* request);
 
-void
-parser_destroy(parser_t* parser);
+__attribute__((unused)) void
+request_destroy(request_t* request);
+
+
+header_t*
+find_header(vheader_t *headers, const char* type);
+
 
 enum PARSE_STATUS{
-    END_OF_HEADER,
     NO_END_OF_LINE,
     PARSING_ERROR,
-    PARSED,
-    HAS_NEXT
+    END_OF_HEADER,
+    OK
 };
 
+
 int
-parse_next(parser_t* parser);
+parse_next_header(const char **buf, header_t* header);
+
+int
+parse_req_type(const char** buf, request_t* request);
 
 #endif //PTHREAD_HTTP_HEADER_PARSER_H

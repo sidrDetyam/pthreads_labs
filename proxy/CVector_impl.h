@@ -4,7 +4,7 @@
 #endif
 
 
-ELEMENT_TYPE*
+__attribute__((unused)) ELEMENT_TYPE*
 CONCAT(VECTOR, _get)(struct VECTOR* vector, size_t ind){
     //assert("Out of range" && vector->cnt <= ind);
     return vector->ptr + ind;
@@ -26,7 +26,6 @@ CONCAT(VECTOR, _back) (struct VECTOR* vector){
 
 void
 CONCAT(VECTOR, _alloc) (struct VECTOR* vector){
-
     if(vector->cnt == vector->capacity){
         void* tmp = realloc(vector->ptr,
                             (vector->capacity * REALLOC_RATIO + 1) * sizeof(ELEMENT_TYPE));
@@ -43,7 +42,6 @@ CONCAT(VECTOR, _alloc) (struct VECTOR* vector){
 
 void
 CONCAT(VECTOR, _push_back) (struct VECTOR* vector, ELEMENT_TYPE* el){
-
     CONCAT(VECTOR, _alloc)(vector);
     memcpy(&vector->ptr[vector->cnt], el, sizeof(ELEMENT_TYPE));
     ++vector->cnt;
@@ -58,7 +56,6 @@ CONCAT(VECTOR, _pop_back) (struct VECTOR* vector){
 
 void
 CONCAT(VECTOR, _init) (struct VECTOR* vector){
-
     vector->cnt = 0;
     vector->ptr = NULL;
     vector->capacity = 0;
@@ -67,7 +64,6 @@ CONCAT(VECTOR, _init) (struct VECTOR* vector){
 
 void
 CONCAT(VECTOR, _free) (struct VECTOR* vector){
-
     free(vector->ptr);
     CONCAT(VECTOR, _init)(vector);
 }
@@ -75,7 +71,6 @@ CONCAT(VECTOR, _free) (struct VECTOR* vector){
 
 void
 CONCAT(VECTOR, _free_ptr) (struct VECTOR* vector){
-
     int* ptr;
     for(size_t i=0; i<vector->cnt; ++i){
         memcpy(&ptr, &vector->ptr[i], sizeof(int*));
