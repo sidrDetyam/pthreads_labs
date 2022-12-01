@@ -47,7 +47,7 @@ void read_n(int fd, char *buff, size_t size) {
     size_t readen = 0;
     while (readen < size) {
         ssize_t cnt = read(fd, buff, size - readen);
-        ASSERT(cnt != -1 && cnt != 0);
+        ASSERT(cnt != -1);
         readen += cnt;
     }
 }
@@ -74,7 +74,7 @@ read_req(request_t *req, int fd, char **ppos_, char **rpos_) {
     while (1) {
         ssize_t cnt = read(fd, rpos, 100000);
         rpos += cnt;
-        if (cnt == -1 || cnt == 0) {
+        if (cnt == -1 || cnt ==0 ) {
             return ERROR;
         }
 
@@ -130,7 +130,7 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
     while (1) {
         ssize_t cnt = read(fd, rpos, 100000);
         rpos += cnt;
-        if (cnt == -1) {
+        if (cnt == -1 || cnt == 0) {
             return ERROR;
         }
 
@@ -207,13 +207,17 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
         }
     } else {
         size_t cc = rpos - ppos;
-        while (rpos - ppos < contlen) {
-            ssize_t cnt = read(fd, rpos, 100000);
-            rpos += cnt;
-            if (cnt == 0 || cnt == -1) {
-                return ERROR;
-            }
-        }
+        read_n(fd, rpos, contlen - cc);
+        ppos += contlen;
+        rpos = ppos;
+
+//        while (rpos - ppos < contlen) {
+//            ssize_t cnt = read(fd, rpos, 100000);
+//            rpos += cnt;
+//            if (cnt == -1) {
+//                return ERROR;
+//            }
+//        }
     }
 
     *ppos_ = (char *) ppos;
@@ -241,37 +245,51 @@ handler(void *arg) {
     int host_fd = -1;
     while (1) {
 
+        char* sst = sppos;
+        char* cst = cppos;
+
         request_t req;
         response_t response;
 
         int st = read_req(&req, context->fd, &cppos, &crpos);
         if (st == ERROR) {
-            printf("ERROR\n");
+            printf("req ERROR\n");
+            if(host_fd != -1){
+                close(host_fd);
+            }
+            close(context->fd);
             return NULL;
         }
 
-        if (host_fd == -1) {
-            host_fd = socket(AF_INET, SOCK_STREAM, 0);
-            ASSERT(host_fd >= 0);
+        while(1) {
+            if (host_fd == -1) {
+                host_fd = socket(AF_INET, SOCK_STREAM, 0);
+                ASSERT(host_fd >= 0);
+                header_t *host_name = find_header(&req.headers, "Host");
+                ASSERT(host_name != NULL);
+                struct sockaddr_in server_addr;
+                name2addr(host_name->value, 80, &server_addr);
+                ASSERT(connect(host_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == 0);
+            }
 
-            header_t *host_name = find_header(&req.headers, "Host");
-            ASSERT(host_name != NULL);
+            write_n(host_fd, cst, cppos - cst);
 
-            struct sockaddr_in server_addr;
-            name2addr(host_name->value, 80, &server_addr);
-            ASSERT(connect(host_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == 0);
+            st = read_response(&response, host_fd, &sppos, &srpos);
+            if (st == ERROR) {
+                printf("response ERROR\n");
+                close(host_fd);
+                host_fd = -1;
+                continue;
+            }
+
+            break;
         }
 
-        write_n(host_fd, client_buff, cppos - client_buff);
+        size_t cc = sppos - sst;
+        write_n(context->fd, sst, cc);
 
-        st = read_response(&response, host_fd, &sppos, &srpos);
-        if (st == ERROR) {
-            printf("ERROR\n");
-            return NULL;
-        }
-
-        size_t cc = srpos - server_buff;
-        write_n(context->fd, server_buff, cc);
+        close(context->fd);
+        close(host_fd);
     }
     return NULL;
 }
