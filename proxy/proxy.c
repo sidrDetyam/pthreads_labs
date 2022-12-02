@@ -38,9 +38,15 @@ typedef struct ConnectionHandlerContext context_t;
 void write_n(int fd, const char *buff, size_t size) {
     size_t writen = 0;
     while (writen < size) {
-        ssize_t cnt = write(fd, buff, size - writen);
-        ASSERT(cnt != -1);
-        writen += cnt;
+        ssize_t cnt = write(fd, buff+writen, size - writen);
+        if(cnt == -1 && errno != EAGAIN){
+            perror("write n");
+            exit(1);
+        }
+        //ASSERT(cnt != -1);
+        if(cnt!=-1){
+            writen += cnt;
+        }
     }
     ASSERT(writen == size);
 }
@@ -48,9 +54,15 @@ void write_n(int fd, const char *buff, size_t size) {
 void read_n(int fd, char *buff, size_t size) {
     size_t readen = 0;
     while (readen < size) {
-        ssize_t cnt = read(fd, buff, size - readen);
-        ASSERT(cnt != -1);
-        readen += cnt;
+        ssize_t cnt = read(fd, buff+readen, size - readen);
+        if(cnt == -1 && errno != EAGAIN){
+            perror("read n");
+            exit(1);
+        }
+        //ASSERT(cnt != -1);
+        if(cnt!=-1){
+            readen += cnt;
+        }
     }
     ASSERT(readen == size);
 }
@@ -117,7 +129,7 @@ read_req(request_t *req, int fd, char **ppos_, char **rpos_) {
         }
         if (status == END_OF_HEADER) {
             //ASSERT(strcmp(req->type, "GET") == 0);
-            if(strcmp(req->type, "GET") != 0){
+            if (strcmp(req->type, "GET") != 0) {
                 return ERROR;
             }
             *ppos_ = (char *) ppos;
@@ -134,12 +146,19 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
     char *rpos = *rpos_;
     const char *ppos = *ppos_;
     while (1) {
-        sleep(1);
-        ssize_t cnt = read(fd, rpos, 1000000);
-        printf("%zd\n", cnt);
-        rpos += cnt;
-        if (cnt == -1 || cnt == 0) {
-            return ERROR;
+        //usleep(1000000);
+
+        while(1) {
+            ssize_t cnt = read(fd, rpos, 1000000);
+            printf("%zd\n", cnt);
+            rpos += cnt;
+            if (cnt == -1) {
+                return ERROR;
+            }
+            break;
+            if(cnt == 0){
+                break;
+            }
         }
 
         int status = parse_response_code(&ppos, response);
@@ -162,7 +181,7 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
         if (isf) {
             ssize_t cnt = read(fd, rpos, 1000000);
             rpos += cnt;
-            if(cnt == -1){
+            if (cnt == -1) {
                 return ERROR;
             }
             isf = 0;
@@ -182,10 +201,11 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
             vheader_t_push_back(&response->headers, &header);
         }
         if (status == END_OF_HEADER) {
+            printf("Header-length: %ld\n", ppos - *ppos_);
             header_t *cl = find_header(&response->headers, "Content-Length");
             header_t *ch = find_header(&response->headers, "Transfer-Encoding");
             //ASSERT(cl != NULL || ch != NULL);
-            if(cl == NULL && ch == NULL){
+            if (cl == NULL && ch == NULL) {
                 return ERROR;
             }
 
@@ -201,14 +221,15 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
     if (is_chunked) {
         while (1) {
             char *crln = strstr(ppos, "\r\n");
-            if(crln == NULL){
-                while(1){
+            if (crln == NULL) {
+                while (1) {
                     ssize_t tmp = read(fd, rpos, 1000000);
-                    if(tmp == -1){
+                    printf("read in chunk %zu\n", tmp);
+                    if (tmp == -1) {
                         return ERROR;
                     }
                     rpos += tmp;
-                    if(tmp > 0){
+                    if (tmp > 0) {
                         break;
                     }
                 }
@@ -221,24 +242,36 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
             long chunkSize = strtol(num, NULL, 16);
             ppos = crln + 2;
 
+            if (chunkSize == 0){
+                while(1) {
+                    header_t trailer;
+                    int status = parse_next_header(&ppos, &trailer);
+                    if (status == OK) {
+                        continue;
+                    }
+                    if(status == END_OF_HEADER){
+                        break;
+                    }
+                }
+                break;
+            }
+
             size_t nn = rpos - ppos;
             if (nn < chunkSize + 2) {
                 read_n(fd, rpos, chunkSize + 2 - nn);
+                printf("read in chunk\n");
                 rpos += chunkSize + 2 - (rpos - ppos);
             }
             ppos += chunkSize + 2;
-
-            if (chunkSize == 0) {
-                break;
-            }
         }
     } else {
         size_t h_cc = ppos - *ppos_;
         size_t cc = rpos - ppos;
-        sleep(1);
+        //sleep(1);
+        printf("Content: %zu\n", contlen);
         read_n(fd, rpos, contlen - cc);
         ppos += contlen;
-        rpos +=contlen - cc;
+        rpos += contlen - cc;
 
 //        while (rpos - ppos < contlen) {
 //            ssize_t cnt = read(fd, rpos, 100000);
@@ -274,8 +307,8 @@ handler(void *arg) {
         memset(client_buff, 0, 30000000);
         memset(server_buff, 0, 30000000);
 
-        char* sst = sppos;
-        char* cst = cppos;
+        char *sst = sppos;
+        char *cst = cppos;
 
         request_t req;
         response_t response;
@@ -285,11 +318,11 @@ handler(void *arg) {
         int st = read_req(&req, context->fd, &cppos, &crpos);
         if (st == ERROR) {
             printf("req ERROR %s %s\n", req.uri, req.type);
-            if(strcmp(req.type, "GET")==0){
+            if (strcmp(req.type, "GET") == 0) {
                 printf("\n");
             }
 
-            if(host_fd != -1){
+            if (host_fd != -1) {
                 close(host_fd);
             }
             close(context->fd);
@@ -299,7 +332,7 @@ handler(void *arg) {
         }
 
         int attemps = 3;
-        while(1) {
+        while (1) {
             if (host_fd == -1) {
                 host_fd = socket(AF_INET, SOCK_STREAM, 0);
                 ASSERT(host_fd >= 0);
@@ -307,6 +340,16 @@ handler(void *arg) {
                 ASSERT(host_name != NULL);
                 struct sockaddr_in server_addr;
                 name2addr(host_name->value, 80, &server_addr);
+
+//                struct timeval timeout;
+//                timeout.tv_sec = 0;
+//                timeout.tv_usec = 250000;
+//                if (setsockopt(host_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+//                               sizeof(timeout)) < 0) {
+//                    perror("timeout");
+//                    exit(1);
+//                }
+
                 ASSERT(connect(host_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == 0);
             }
 
@@ -317,7 +360,7 @@ handler(void *arg) {
                 printf("response ERROR\n");
                 close(host_fd);
                 attemps--;
-                if(attemps == 0){
+                if (attemps == 0) {
                     close(host_fd);
                     close(context->fd);
                     free(server_buff);
@@ -332,8 +375,11 @@ handler(void *arg) {
         }
 
         size_t cc = sppos - sst;
-        write_n(context->fd, sst, cc);
+        //if(cc != 234008) {
+            write_n(context->fd, sst, cc);
+            printf("-- written %zu\n\n", cc);
 //
+        //}
 
         shutdown(context->fd, SHUT_RDWR);
         close(context->fd);
@@ -358,14 +404,14 @@ int main() {
     int i = 0;
     while (1) {
         ASSERT((fd = accept_servsock(&servsock)) != ERROR);
-        context_t* context = malloc(sizeof(context_t));
+        context_t *context = malloc(sizeof(context_t));
         context->fd = fd;
 
         struct timeval timeout;
         timeout.tv_sec = 0;
-        timeout.tv_usec = 250;
-        if (setsockopt (fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
-                        sizeof(timeout)) < 0){
+        timeout.tv_usec = 250000;
+        if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                       sizeof(timeout)) < 0) {
             perror("timeout");
             exit(1);
         }
