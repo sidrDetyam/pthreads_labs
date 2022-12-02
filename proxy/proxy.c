@@ -42,6 +42,7 @@ void write_n(int fd, const char *buff, size_t size) {
         ASSERT(cnt != -1);
         writen += cnt;
     }
+    ASSERT(writen == size);
 }
 
 void read_n(int fd, char *buff, size_t size) {
@@ -51,6 +52,7 @@ void read_n(int fd, char *buff, size_t size) {
         ASSERT(cnt != -1);
         readen += cnt;
     }
+    ASSERT(readen == size);
 }
 
 size_t read_while(int fd, char *buff) {
@@ -75,7 +77,7 @@ read_req(request_t *req, int fd, char **ppos_, char **rpos_) {
     while (1) {
         ssize_t cnt = read(fd, rpos, 100000);
         rpos += cnt;
-        if (cnt == -1) {
+        if (cnt == -1 || cnt == 0) {
             return ERROR;
         }
 
@@ -132,7 +134,9 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
     char *rpos = *rpos_;
     const char *ppos = *ppos_;
     while (1) {
-        ssize_t cnt = read(fd, rpos, 100000);
+        sleep(1);
+        ssize_t cnt = read(fd, rpos, 1000000);
+        printf("%zd\n", cnt);
         rpos += cnt;
         if (cnt == -1 || cnt == 0) {
             return ERROR;
@@ -156,8 +160,11 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
     size_t contlen = 0;
     while (1) {
         if (isf) {
-            ssize_t cnt = read(fd, rpos, 100000);
+            ssize_t cnt = read(fd, rpos, 1000000);
             rpos += cnt;
+            if(cnt == -1){
+                return ERROR;
+            }
             isf = 0;
         }
 
@@ -194,6 +201,20 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
     if (is_chunked) {
         while (1) {
             char *crln = strstr(ppos, "\r\n");
+            if(crln == NULL){
+                while(1){
+                    ssize_t tmp = read(fd, rpos, 1000000);
+                    if(tmp == -1){
+                        return ERROR;
+                    }
+                    rpos += tmp;
+                    if(tmp > 0){
+                        break;
+                    }
+                }
+                continue;
+            }
+
             char num[100];
             memcpy(num, ppos, crln - ppos);
             num[crln - ppos] = '\0';
@@ -210,10 +231,11 @@ read_response(response_t *response, int fd, char **ppos_, char **rpos_) {
             if (chunkSize == 0) {
                 break;
             }
-            rpos += read(fd, rpos, 100);
         }
     } else {
+        size_t h_cc = ppos - *ppos_;
         size_t cc = rpos - ppos;
+        sleep(1);
         read_n(fd, rpos, contlen - cc);
         ppos += contlen;
         rpos +=contlen - cc;
@@ -240,9 +262,6 @@ handler(void *arg) {
     char *client_buff = malloc(30000000);
     char *server_buff = malloc(30000000);
 
-    memset(client_buff, 0, 30000000);
-    memset(server_buff, 0, 30000000);
-
     char *crpos = client_buff;
     char *srpos = server_buff;
 
@@ -252,15 +271,24 @@ handler(void *arg) {
     int host_fd = -1;
     while (1) {
 
+        memset(client_buff, 0, 30000000);
+        memset(server_buff, 0, 30000000);
+
         char* sst = sppos;
         char* cst = cppos;
 
         request_t req;
         response_t response;
 
+        req.type = "";
+        req.uri = "";
         int st = read_req(&req, context->fd, &cppos, &crpos);
         if (st == ERROR) {
-            printf("req ERROR\n");
+            printf("req ERROR %s %s\n", req.uri, req.type);
+            if(strcmp(req.type, "GET")==0){
+                printf("\n");
+            }
+
             if(host_fd != -1){
                 close(host_fd);
             }
@@ -291,6 +319,7 @@ handler(void *arg) {
                 attemps--;
                 if(attemps == 0){
                     close(host_fd);
+                    close(context->fd);
                     free(server_buff);
                     free(client_buff);
                     return NULL;
@@ -304,6 +333,13 @@ handler(void *arg) {
 
         size_t cc = sppos - sst;
         write_n(context->fd, sst, cc);
+//
+
+        shutdown(context->fd, SHUT_RDWR);
+        close(context->fd);
+        shutdown(host_fd, SHUT_RDWR);
+        close(host_fd);
+        return NULL;
     }
     return NULL;
 }
@@ -319,6 +355,7 @@ int main() {
     ASSERT(create_servsock(8080, 10, &servsock) == SUCCESS);
     int fd;
 
+    int i = 0;
     while (1) {
         ASSERT((fd = accept_servsock(&servsock)) != ERROR);
         context_t* context = malloc(sizeof(context_t));
@@ -333,10 +370,12 @@ int main() {
             exit(1);
         }
 
-        pthread_t t;
+        pthread_t *t = malloc(sizeof(pthread_t));
 //        handler(context);
-        printf("connetct!!\n");
-        pthread_create(&t, NULL, handler, context);
+        printf("%d connetct!!\n", i);
+        ++i;
+        handler(context);
+        //pthread_create(t, NULL, handler, context);
     }
 
     close(fd);
