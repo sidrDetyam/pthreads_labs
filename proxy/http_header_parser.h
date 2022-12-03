@@ -30,6 +30,7 @@ struct RESPONSE{
     char* code;
     vheader_t headers;
     char* body;
+    size_t content_length;
 };
 typedef struct RESPONSE response_t;
 
