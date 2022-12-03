@@ -7,16 +7,29 @@
 #include <string.h>
 
 #define ELEMENT_TYPE header_t
-#include "CVector_impl.h"
+#include "cvector_impl.h"
 #include "common.h"
 
 void
 request_init(request_t* request){
+    request->type = NULL;
+    request->uri = NULL;
+    request->version = NULL;
+    request->body = NULL;
     vheader_t_init(&request->headers);
 }
 
 __attribute__((unused)) void
 request_destroy(request_t* request){
+    free(request->type);
+    free(request->uri);
+    free(request->version);
+    free(request->body);
+    for(size_t i=0; i<request->headers.cnt; ++i){
+        header_t* header = vheader_t_get(&request->headers, i);
+        free(header->type);
+        free(header->value);
+    }
     vheader_t_free(&request->headers);
 }
 
@@ -87,7 +100,18 @@ find_header(vheader_t *headers, const char* type){
 
 void
 response_init(response_t* response){
+    response->body = NULL;
+    response->version = NULL;
+    response->code = NULL;
     vheader_t_init(&response->headers);
+}
+
+void
+response_destroy(response_t* response){
+    free(response->code);
+    free(response->version);
+    free(response->body);
+    //TODO clean headers
 }
 
 int

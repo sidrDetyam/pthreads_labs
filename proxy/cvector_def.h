@@ -30,7 +30,13 @@ ELEMENT_TYPE*
 CONCAT(VECTOR, _back) (struct VECTOR* vector);
 
 void
+CONCAT(VECTOR, _forced_alloc) (struct VECTOR* vector);
+
+void
 CONCAT(VECTOR, _alloc) (struct VECTOR* vector);
+
+void
+CONCAT(VECTOR, _alloc2) (struct VECTOR* vector, size_t cnt);
 
 void
 CONCAT(VECTOR, _push_back) (struct VECTOR* vector, ELEMENT_TYPE* el);

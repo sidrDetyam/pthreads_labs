@@ -14,7 +14,7 @@ struct HEADER{
 typedef struct HEADER header_t;
 
 #define ELEMENT_TYPE header_t
-#include "CVector_def.h"
+#include "cvector_def.h"
 
 struct REQUEST{
     char* type;
@@ -60,6 +60,9 @@ parse_req_type(const char** buf, request_t* request);
 
 void
 response_init(response_t* response);
+
+void
+response_destroy(response_t* response);
 
 int
 parse_response_code(const char** buf, response_t* response);
