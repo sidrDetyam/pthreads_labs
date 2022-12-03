@@ -48,7 +48,7 @@ CONCAT(VECTOR, _alloc)(struct VECTOR *vector) {
 
 void
 CONCAT(VECTOR, _alloc2)(struct VECTOR *vector, size_t cnt) {
-    if (vector->capacity - vector->cnt < cnt) {
+    while (vector->capacity - vector->cnt < cnt) {
         CONCAT(VECTOR, _forced_alloc)(vector);
     }
 }
@@ -64,6 +64,14 @@ CONCAT(VECTOR, _push_back)(struct VECTOR *vector, ELEMENT_TYPE *el) {
 
 void
 CONCAT(VECTOR, _pop_back)(struct VECTOR *vector) {
+    --vector->cnt;
+}
+
+void
+CONCAT(VECTOR, _remove) (struct VECTOR* vector, size_t ind){
+    for(size_t i = ind; i < vector->cnt; ++i){
+        memcpy(&vector->ptr[i], &vector->ptr[i+1], sizeof(ELEMENT_TYPE));
+    }
     --vector->cnt;
 }
 

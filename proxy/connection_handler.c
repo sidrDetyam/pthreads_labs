@@ -13,8 +13,10 @@
 #include "common.h"
 
 #define ELEMENT_TYPE char
-
 #include "cvector_impl.h"
+
+//#define ELEMENT_TYPE handler_context_t;
+//#include "cvector_impl.h"
 
 
 int
@@ -77,7 +79,7 @@ enum Config {
 static int
 read_to_vchar(int fd, vchar *buff, size_t *read_) {
     vchar_alloc2(buff, MIN_READ_BUFF_SIZE + 1);
-    ssize_t cnt = read(fd, buff->ptr, MIN_READ_BUFF_SIZE);
+    ssize_t cnt = read(fd, &buff->ptr[buff->cnt], MIN_READ_BUFF_SIZE);
     if (cnt == -1) {
         return ERROR;
     }
@@ -85,8 +87,7 @@ read_to_vchar(int fd, vchar *buff, size_t *read_) {
         *read_ = cnt;
     }
     buff->cnt += cnt;
-    buff->ptr += cnt;
-    *buff->ptr = '\0';
+    buff->ptr[buff->cnt] = '\0';
     return SUCCESS;
 }
 
@@ -233,7 +234,7 @@ parsing_resp_headers_step(handler_context_t* context, int fd, int events){
                              destroy_context(context),);
 
             context->response.content_length = cl_header!=NULL? (long) atoi(cl_header->value) : -1;
-            context->read_ = 0;
+            context->read_ = context->sbuff.cnt - context->sppos;
             context->chunk_size = -1;
             context->chunk_read = 0;
             context->handling_step = PARSING_RESP_BODY;
@@ -325,7 +326,6 @@ void
 handle(handler_context_t *context, int fd, int events) {
     if (context->handling_step == PARSING_REQ_TYPE) {
         parsing_req_type_step(context, fd, events);
-        return;
     }
 
     if (context->handling_step == PARSING_REQ_HEADERS) {
@@ -340,12 +340,10 @@ handle(handler_context_t *context, int fd, int events) {
 
     if (context->handling_step == PARSING_RESP_CODE) {
         parsing_resp_code_step(context, fd, events);
-        return;
     }
 
     if (context->handling_step == PARSING_RESP_HEADERS) {
         parsing_resp_headers_step(context, fd, events);
-        return;
     }
 
     if (context->handling_step == PARSING_RESP_BODY) {
@@ -355,6 +353,5 @@ handle(handler_context_t *context, int fd, int events) {
 
     if (context->handling_step == SENDING_RESP) {
         send_resp_step(context, fd, events);
-        return;
     }
 }

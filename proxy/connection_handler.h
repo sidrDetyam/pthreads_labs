@@ -59,6 +59,10 @@ struct HttpConnectionHandlerContext{
 typedef struct HttpConnectionHandlerContext handler_context_t;
 
 
+//#define ELEMENT_TYPE handler_context_t;
+//#include "cvector_def.h"
+
+
 void
 init_context(handler_context_t* context, int client_fd);
 

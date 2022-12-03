@@ -37,7 +37,7 @@ int
 parse_req_type(const char** buf, request_t* request){
     const char* cur = *buf;
     const char* crlf = strstr(cur, "\r\n");
-    ASSERT_RETURN2(crlf != NULL, NO_END_OF_LINE);
+    ASSERT_RETURN2(crlf != NULL && 2, NO_END_OF_LINE);
 
     const char* ws1 = strstr(cur, " ");
     ASSERT_RETURN2(ws1 != NULL && ws1 < crlf, PARSING_ERROR);
@@ -118,7 +118,7 @@ int
 parse_response_code(const char** buf, response_t* response){
     const char* cur = *buf;
     const char* crlf = strstr(cur, "\r\n");
-    ASSERT_RETURN2(crlf != NULL, NO_END_OF_LINE);
+    ASSERT_RETURN2(crlf != NULL && 1, NO_END_OF_LINE);
 
     //TODO
 

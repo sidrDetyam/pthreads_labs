@@ -51,6 +51,9 @@ void
 CONCAT(VECTOR, _free) (struct VECTOR* vector);
 
 void
+CONCAT(VECTOR, _remove) (struct VECTOR* vector, size_t ind);
+
+void
 CONCAT(VECTOR, _free_ptr) (struct VECTOR* vector);
 
 #undef ELEMENT_TYPE
