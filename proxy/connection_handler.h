@@ -44,15 +44,15 @@ struct HttpConnectionHandlerContext{
     response_t response;
 
     vchar cbuff;
-    char* cppos;
-    //char* crpos;
+    size_t cppos;
 
     size_t sended;
     size_t read_;
 
     vchar sbuff;
-    char* sppos;
-    //char* srpos;
+    size_t sppos;
+    long chunk_size;
+    size_t chunk_read;
 
     int handling_step;
 };

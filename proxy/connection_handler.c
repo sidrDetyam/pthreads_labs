@@ -8,16 +8,9 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <netdb.h>
 #include <poll.h>
-#include <limits.h>
-#include <pthread.h>
-
 #include "common.h"
-#include "server_socket.h"
-#include "http_header_parser.h"
 
 #define ELEMENT_TYPE char
 
@@ -44,13 +37,11 @@ void init_context(handler_context_t *context, int client_fd) {
 
     vchar_init(&context->cbuff);
     vchar_forced_alloc(&context->cbuff);
-    context->cppos = context->cbuff.ptr;
-    //context->crpos = context->cbuff.ptr;
+    context->cppos = 0;
 
     vchar_init(&context->sbuff);
     vchar_forced_alloc(&context->sbuff);
-    context->sppos = context->sbuff.ptr;
-    //context->srpos = context->sbuff.ptr;
+    context->sppos = 0;
 
     context->sended = 0;
 
@@ -108,7 +99,9 @@ parsing_req_type_step(handler_context_t *context, int fd, int events) {
     ASSERT_RETURN2_C(read_to_vchar(context->client_fd, &context->cbuff, NULL) == SUCCESS,
                      destroy_context(context),);
 
-    int status = parse_req_type((const char **) &context->cppos, &context->request);
+    const char* cppos = context->cbuff.ptr + context->cppos;
+    int status = parse_req_type(&cppos, &context->request);
+    context->cppos = cppos - context->cbuff.ptr;
 
     ASSERT_RETURN2_C(status != PARSING_ERROR,
                      destroy_context(context),);
@@ -128,7 +121,10 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events){
 
     while(1){
         header_t header;
-        int status = parse_next_header((const char **) &context->cppos, &header);
+        const char* cppos = context->cbuff.ptr + context->cppos;
+        int status = parse_next_header(&cppos, &header);
+        context->cppos = cppos - context->cbuff.ptr;
+
         ASSERT_RETURN2_C(status != PARSING_ERROR,
                          destroy_context(context),);
 
@@ -193,7 +189,9 @@ parsing_resp_code_step(handler_context_t* context, int fd, int events){
     ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, NULL) == SUCCESS,
                      destroy_context(context),);
 
-    int status = parse_response_code((const char **) &context->sppos, &context->response);
+    const char* sppos = context->sbuff.ptr + context->sppos;
+    int status = parse_response_code(&sppos, &context->response);
+    context->sppos = sppos - context->sbuff.ptr;
 
     ASSERT_RETURN2_C(status != PARSING_ERROR,
                      destroy_context(context),);
@@ -214,7 +212,10 @@ parsing_resp_headers_step(handler_context_t* context, int fd, int events){
 
     while(1){
         header_t header;
-        int status = parse_next_header((const char **) &context->sppos, &header);
+        const char* sppos = context->sbuff.ptr + context->sppos;
+        int status = parse_next_header(&sppos, &header);
+        context->sppos = sppos - context->sbuff.ptr;
+
         ASSERT_RETURN2_C(status != PARSING_ERROR,
                          destroy_context(context),);
 
@@ -231,8 +232,10 @@ parsing_resp_headers_step(handler_context_t* context, int fd, int events){
             ASSERT_RETURN2_C(ch_header != NULL || cl_header != NULL,
                              destroy_context(context),);
 
-            context->response.content_length = cl_header!=NULL? (size_t) atoi(cl_header->value) : -1;
+            context->response.content_length = cl_header!=NULL? (long) atoi(cl_header->value) : -1;
             context->read_ = 0;
+            context->chunk_size = -1;
+            context->chunk_read = 0;
             context->handling_step = PARSING_RESP_BODY;
             return;
         }
@@ -255,55 +258,65 @@ parsing_resp_body(handler_context_t* context, int fd, int events){
         && context->response.content_length == context->read_){
         context->client_events = POLLOUT;
         context->server_events = 0;
-        context->sppos = context->sbuff.ptr;
+        context->sppos = context->sbuff.cnt;
+        context->sended = 0;
         context->handling_step = SENDING_RESP;
         return;
     }
 
     if(context->response.content_length == -1){
-        char *crlf = strstr(ppos, "\r\n");
-        if (crln == NULL) {
-                while (1) {
-                    ssize_t tmp = read(fd, rpos, 1000000);
-                    printf("read in chunk %zu\n", tmp);
-                    if (tmp == -1) {
-                        return ERROR;
-                    }
-                    rpos += tmp;
-                    if (tmp > 0) {
-                        break;
-                    }
+        while(1) {
+            if (context->chunk_size == -1) {
+                char *sppos = context->sbuff.ptr + context->sppos;
+                char *crlf = strstr(sppos, "\r\n");
+                if (crlf == NULL) {
+                    return;
                 }
+                char num[10];
+                memcpy(num, sppos, crlf - sppos);
+                num[crlf - sppos] = '\0';
+                context->chunk_size = strtol(num, NULL, 16) + 2;
+                context->chunk_read = 0;
+                context->sppos += crlf - sppos + 2;
+            }
+            size_t ra = MIN(context->chunk_size - context->chunk_read,
+                            context->sbuff.cnt - context->sppos);
+
+            context->sppos += ra;
+            context->chunk_read += ra;
+            if (context->chunk_read == context->chunk_size) {
+                if(context->chunk_size == 2){
+                    context->client_events = POLLOUT;
+                    context->server_events = 0;
+                    context->response.content_length = (long) context->read_;
+                    context->sended = 0;
+                    context->handling_step = SENDING_RESP;
+                    return;
+                }
+
+                context->chunk_read = 0;
+                context->chunk_size = -1;
                 continue;
             }
+            return;
+        }
+    }
+}
 
-            char num[100];
-            memcpy(num, ppos, crln - ppos);
-            num[crln - ppos] = '\0';
-            long chunkSize = strtol(num, NULL, 16);
-            ppos = crln + 2;
 
-            if (chunkSize == 0){
-                while(1) {
-                    header_t trailer;
-                    int status = parse_next_header(&ppos, &trailer);
-                    if (status == OK) {
-                        continue;
-                    }
-                    if(status == END_OF_HEADER){
-                        break;
-                    }
-                }
-                break;
-            }
+static void
+send_resp_step(handler_context_t* context, int fd, int events) {
+    ASSERT(context->handling_step == SENDING_RESP &&
+           fd == context->client_fd && (events & POLLOUT));
 
-            size_t nn = rpos - ppos;
-            if (nn < chunkSize + 2) {
-                read_n(fd, rpos, chunkSize + 2 - nn);
-                printf("read in chunk\n");
-                rpos += chunkSize + 2 - (rpos - ppos);
-            }
-            ppos += chunkSize + 2;
+    ssize_t cnt = write(context->client_fd, context->sbuff.ptr + context->sended,
+                        context->sbuff.cnt - context->sended);
+    ASSERT_RETURN2_C(cnt != -1, destroy_context(context),);
+    context->sended += cnt;
+
+    if(context->sended == context->sbuff.cnt){
+        destroy_context(context);
+        context->handling_step = HANDLED;
     }
 }
 
@@ -311,8 +324,37 @@ parsing_resp_body(handler_context_t* context, int fd, int events){
 void
 handle(handler_context_t *context, int fd, int events) {
     if (context->handling_step == PARSING_REQ_TYPE) {
-        if ()
+        parsing_req_type_step(context, fd, events);
+        return;
+    }
+
+    if (context->handling_step == PARSING_REQ_HEADERS) {
+        parsing_req_headers_step(context, fd, events);
+        return;
+    }
+
+    if (context->handling_step == SENDING_REQ) {
+        sending_req_step(context, fd, events);
+        return;
+    }
+
+    if (context->handling_step == PARSING_RESP_CODE) {
+        parsing_resp_code_step(context, fd, events);
+        return;
+    }
+
+    if (context->handling_step == PARSING_RESP_HEADERS) {
+        parsing_resp_headers_step(context, fd, events);
+        return;
+    }
+
+    if (context->handling_step == PARSING_RESP_BODY) {
+        parsing_resp_body(context, fd, events);
+        return;
+    }
+
+    if (context->handling_step == SENDING_RESP) {
+        send_resp_step(context, fd, events);
+        return;
     }
 }
-
-
