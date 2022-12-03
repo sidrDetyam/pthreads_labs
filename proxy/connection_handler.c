@@ -52,6 +52,8 @@ void init_context(handler_context_t *context, int client_fd) {
     context->sppos = context->sbuff.ptr;
     //context->srpos = context->sbuff.ptr;
 
+    context->sended = 0;
+
     context->client_fd = client_fd;
     context->server_fd = -1;
     context->client_events = POLLIN;
@@ -76,7 +78,8 @@ destroy_context(handler_context_t *context) {
 
 
 enum Config {
-    MIN_READ_BUFF_SIZE = 100
+    MIN_READ_BUFF_SIZE = 100,
+    DEFAULT_PORT = 80
 };
 
 
@@ -137,12 +140,68 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events){
             ASSERT_RETURN2_C(strcmp(context->request.type, "GET") == 0,
                              destroy_context(context),);
 
-                        
+            ASSERT(context->server_fd == -1);
+            ASSERT_RETURN2_C((context->server_fd = socket(AF_INET, SOCK_STREAM, 0)) >= 0,
+                             destroy_context(context),);
 
-            context->handling_step =
+            header_t *host_name = find_header(&context->request.headers, "Host");
+            ASSERT_RETURN2_C(host_name != NULL,
+                             destroy_context(context),);
+
+            struct sockaddr_in host_addr;
+            name2addr(host_name->value, DEFAULT_PORT, &host_addr);
+            ASSERT_RETURN2_C(connect(context->server_fd,
+                                     (struct sockaddr *) &host_addr, sizeof(host_addr))==0,
+                             destroy_context(context),);
+
+            context->client_events = 0;
+            context->server_events = POLLOUT;
+            context->sended = 0;
+            context->handling_step = SENDING_REQ;
         }
     }
 }
+
+
+static void
+sending_req_step(handler_context_t* context, int fd, int events){
+    ASSERT(context->handling_step == SENDING_REQ &&
+           fd == context->server_fd && (events & POLLOUT));
+
+    ssize_t cnt = write(context->server_fd, context->cbuff.ptr + context->sended,
+                        context->cbuff.cnt - context->sended);
+    ASSERT_RETURN2_C(cnt != -1, destroy_context(context),);
+    context->sended += cnt;
+
+    if(context->sended == context->cbuff.cnt){
+        context->client_events = 0;
+        context->server_events = POLLIN;
+        context->handling_step = PARSING_RESP_CODE;
+    }
+}
+
+
+static void
+parsing_resp_code_step(handler_context_t* context, int fd, int events){
+    ASSERT(context->handling_step == PARSING_RESP_CODE &&
+           fd == context->server_fd && (events & POLLIN));
+
+    ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff) == SUCCESS,
+                     destroy_context(context),);
+
+    int status = parse_response_code((const char **) &context->sppos, &context->response);
+
+    ASSERT_RETURN2_C(status != PARSING_ERROR,
+                     destroy_context(context),);
+
+    if (status == OK) {
+        context->handling_step = PARSING_RESP_HEADERS;
+    }
+}
+
+
+
+
 
 void
 handle(handler_context_t *context, int fd, int events) {

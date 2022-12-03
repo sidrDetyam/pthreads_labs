@@ -21,6 +21,8 @@ enum HandlingStep{
     PARSING_REQ_HEADERS,
     PARSING_REQ_BODY,
 
+    SENDING_REQ,
+
     PARSING_RESP_CODE,
     PARSING_RESP_HEADERS,
     PARSING_RESP_BODY,
@@ -42,6 +44,8 @@ struct HttpConnectionHandlerContext{
     vchar cbuff;
     char* cppos;
     //char* crpos;
+
+    size_t sended;
 
     vchar sbuff;
     char* sppos;
