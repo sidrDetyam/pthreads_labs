@@ -1,12 +1,13 @@
 //
 // Created by argem on 30.11.2022.
 //
-#include <stdlib.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <string.h>
+#include <netdb.h>
 
-#include "server_socket.h"
+#include "server_utils.h"
 #include "common.h"
 
 
@@ -43,4 +44,28 @@ int
 accept_servsock(servsock_t* servsock){
     int fd = accept(servsock->fd, (struct sockaddr*)& servsock->addr, &servsock->socklen);
     return (fd >= 0? fd : ERROR);
+}
+
+
+int
+name2addr(const char *host_name, uint16_t host_port, struct sockaddr_in *sock_addr) {
+    struct hostent *server = gethostbyname(host_name);
+    ASSERT_RETURN(server != NULL);
+
+    memset(&sock_addr->sin_zero, 0, sizeof(sock_addr->sin_zero));
+    sock_addr->sin_family = AF_INET;
+    sock_addr->sin_port = htons(host_port);
+    memcpy(&sock_addr->sin_addr.s_addr, server->h_addr_list[0], server->h_length);
+
+    return SUCCESS;
+}
+
+
+int
+connect_to_host(int fd, const char *host_name, uint16_t host_port){
+    struct sockaddr_in host_addr;
+    ASSERT_RETURN(name2addr(host_name, host_port, &host_addr) == SUCCESS);
+    ASSERT_RETURN(connect(fd, (struct sockaddr *) &host_addr, sizeof(host_addr))==0);
+
+    return SUCCESS;
 }

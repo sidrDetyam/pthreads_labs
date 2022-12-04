@@ -6,6 +6,8 @@
 #define PTHREAD_SERVER_SOCKET_H
 
 #include <sys/socket.h>
+#include <unistd.h>
+#include <netinet/in.h>
 
 struct SERVER_SOCKET{
     int fd;
@@ -22,5 +24,11 @@ close_servsock(servsock_t* sock);
 
 int
 accept_servsock(servsock_t* servsock);
+
+int
+name2addr(const char *host_name, uint16_t host_port, struct sockaddr_in *sock_addr);
+
+int
+connect_to_host(int fd, const char *host_name, uint16_t host_port);
 
 #endif //PTHREAD_SERVER_SOCKET_H

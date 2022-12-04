@@ -72,8 +72,5 @@ destroy_context(handler_context_t* context);
 void
 handle(handler_context_t* context, int fd, int events);
 
-int
-name2addr(const char *host_name, uint16_t host_port, struct sockaddr_in *sock_addr);
-
 
 #endif //PTHREAD___CONNECTION_HANDLER_H

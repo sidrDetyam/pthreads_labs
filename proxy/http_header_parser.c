@@ -37,7 +37,7 @@ int
 parse_req_type(const char** buf, request_t* request){
     const char* cur = *buf;
     const char* crlf = strstr(cur, "\r\n");
-    ASSERT_RETURN2(crlf != NULL && 2, NO_END_OF_LINE);
+    ASSERT_RETURN2(crlf != NULL, NO_END_OF_LINE);
 
     const char* ws1 = strstr(cur, " ");
     ASSERT_RETURN2(ws1 != NULL && ws1 < crlf, PARSING_ERROR);
@@ -111,16 +111,29 @@ response_destroy(response_t* response){
     free(response->code);
     free(response->version);
     free(response->body);
-    //TODO clean headers
+    for(size_t i=0; i<response->headers.cnt; ++i){
+        header_t *header = vheader_t_get(&response->headers, i);
+        free(header->type);
+        free(header->value);
+    }
 }
 
 int
 parse_response_code(const char** buf, response_t* response){
     const char* cur = *buf;
     const char* crlf = strstr(cur, "\r\n");
-    ASSERT_RETURN2(crlf != NULL && 1, NO_END_OF_LINE);
+    ASSERT_RETURN2(crlf != NULL, NO_END_OF_LINE);
 
-    //TODO
+    const char* ws = strstr(cur, " ");
+    ASSERT_RETURN2(ws != NULL && ws < crlf, PARSING_ERROR);
+
+    response->version = malloc(ws - cur + 1);
+    memcpy(response->version, cur, ws - cur);
+    response->version[ws-cur] = '\0';
+
+    response->code = malloc(crlf - ws);
+    memcpy(response->code, ws+1, crlf - ws - 1);
+    response->code[crlf - ws - 1] = '\0';
 
     *buf = crlf+2;
     return OK;
