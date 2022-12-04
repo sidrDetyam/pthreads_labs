@@ -71,15 +71,18 @@ destroy_context(handler_context_t *context) {
 
 
 enum Config {
-    MIN_READ_BUFF_SIZE = 100,
+    MIN_READ_BUFF_SIZE = 10000,
     DEFAULT_PORT = 80
 };
 
 
 static int
-read_to_vchar(int fd, vchar *buff, size_t *read_) {
+read_to_vchar(int fd, vchar *buff, size_t *read_, char* from) {
     vchar_alloc2(buff, MIN_READ_BUFF_SIZE + 1);
+    //printf("read to vchar %s\n", from);
     ssize_t cnt = read(fd, &buff->ptr[buff->cnt], MIN_READ_BUFF_SIZE);
+    //printf(" --- \n");
+    //ASSERT(cnt != 0);
     if (cnt == -1) {
         return ERROR;
     }
@@ -97,7 +100,7 @@ parsing_req_type_step(handler_context_t *context, int fd, int events) {
     ASSERT(context->handling_step == PARSING_REQ_TYPE &&
            fd == context->client_fd && (events & POLLIN));
 
-    ASSERT_RETURN2_C(read_to_vchar(context->client_fd, &context->cbuff, NULL) == SUCCESS,
+    ASSERT_RETURN2_C(read_to_vchar(context->client_fd, &context->cbuff, NULL, "req_type") == SUCCESS,
                      destroy_context(context),);
 
     const char* cppos = context->cbuff.ptr + context->cppos;
@@ -113,12 +116,15 @@ parsing_req_type_step(handler_context_t *context, int fd, int events) {
 }
 
 static void
-parsing_req_headers_step(handler_context_t *context, int fd, int events){
+parsing_req_headers_step(handler_context_t *context, int fd, int events, int flag){
     ASSERT(context->handling_step == PARSING_REQ_HEADERS &&
            fd == context->client_fd && (events & POLLIN));
 
-    ASSERT_RETURN2_C(read_to_vchar(context->client_fd, &context->cbuff, NULL) == SUCCESS,
-                     destroy_context(context),);
+    //printf("%s\n", context->cbuff.ptr);
+    if(!flag) {
+        ASSERT_RETURN2_C(read_to_vchar(context->client_fd, &context->cbuff, NULL, "req_header") == SUCCESS,
+                         destroy_context(context),);
+    }
 
     while(1){
         header_t header;
@@ -150,9 +156,20 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events){
 
             struct sockaddr_in host_addr;
             name2addr(host_name->value, DEFAULT_PORT, &host_addr);
+            printf("++++++ connecting...\n");
             ASSERT_RETURN2_C(connect(context->server_fd,
                                      (struct sockaddr *) &host_addr, sizeof(host_addr))==0,
                              destroy_context(context),);
+            printf("------ connecting...\n");
+
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 250000;
+            if (setsockopt(context->server_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                           sizeof(timeout)) < 0) {
+                perror("timeout");
+                exit(1);
+            }
 
             context->client_events = 0;
             context->server_events = POLLOUT;
@@ -187,7 +204,7 @@ parsing_resp_code_step(handler_context_t* context, int fd, int events){
     ASSERT(context->handling_step == PARSING_RESP_CODE &&
            fd == context->server_fd && (events & POLLIN));
 
-    ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, NULL) == SUCCESS,
+    ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, NULL, "resp_code") == SUCCESS,
                      destroy_context(context),);
 
     const char* sppos = context->sbuff.ptr + context->sppos;
@@ -204,12 +221,14 @@ parsing_resp_code_step(handler_context_t* context, int fd, int events){
 
 
 static void
-parsing_resp_headers_step(handler_context_t* context, int fd, int events){
+parsing_resp_headers_step(handler_context_t* context, int fd, int events, int flag){
     ASSERT(context->handling_step == PARSING_RESP_HEADERS &&
            fd == context->server_fd && (events & POLLIN));
 
-    ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, NULL) == SUCCESS,
-                     destroy_context(context),);
+    if(!flag) {
+        ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, NULL, "resp_header") == SUCCESS,
+                         destroy_context(context),);
+    }
 
     while(1){
         header_t header;
@@ -245,15 +264,16 @@ parsing_resp_headers_step(handler_context_t* context, int fd, int events){
 
 
 static void
-parsing_resp_body(handler_context_t* context, int fd, int events){
+parsing_resp_body(handler_context_t* context, int fd, int events, int flag){
     ASSERT(context->handling_step == PARSING_RESP_BODY &&
            fd == context->server_fd && (events & POLLIN));
 
-    size_t read_;
-    ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, &read_) == SUCCESS,
-                     destroy_context(context),);
-
-    context->read_ += read_;
+    if(!flag) {
+        size_t read_;
+        ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, &read_, "resp body") == SUCCESS,
+                         destroy_context(context),);
+        context->read_ += read_;
+    }
 
     if(context->response.content_length != -1
         && context->response.content_length == context->read_){
@@ -324,12 +344,15 @@ send_resp_step(handler_context_t* context, int fd, int events) {
 
 void
 handle(handler_context_t *context, int fd, int events) {
+    int flag = 0;
+
     if (context->handling_step == PARSING_REQ_TYPE) {
         parsing_req_type_step(context, fd, events);
+        flag = 1;
     }
 
     if (context->handling_step == PARSING_REQ_HEADERS) {
-        parsing_req_headers_step(context, fd, events);
+        parsing_req_headers_step(context, fd, events, flag);
         return;
     }
 
@@ -340,14 +363,16 @@ handle(handler_context_t *context, int fd, int events) {
 
     if (context->handling_step == PARSING_RESP_CODE) {
         parsing_resp_code_step(context, fd, events);
+        flag = 1;
     }
 
     if (context->handling_step == PARSING_RESP_HEADERS) {
-        parsing_resp_headers_step(context, fd, events);
+        parsing_resp_headers_step(context, fd, events, flag);
+        flag = 1;
     }
 
     if (context->handling_step == PARSING_RESP_BODY) {
-        parsing_resp_body(context, fd, events);
+        parsing_resp_body(context, fd, events, flag);
         return;
     }
 
