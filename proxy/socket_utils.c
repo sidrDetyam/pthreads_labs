@@ -6,8 +6,9 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <netdb.h>
+#include <fcntl.h>
 
-#include "server_utils.h"
+#include "socket_utils.h"
 #include "common.h"
 
 
@@ -34,16 +35,17 @@ create_servsock(uint16_t port, int limit, servsock_t* sock){
     return SUCCESS;
 }
 
-int
+__attribute__((unused)) int
 close_servsock(servsock_t* sock){
     ASSERT_RETURN(shutdown(sock->fd, SHUT_RDWR) == 0);
     return SUCCESS;
 }
 
 int
-accept_servsock(servsock_t* servsock){
+accept_servsock(servsock_t* servsock, int is_non_blocking){
     int fd = accept(servsock->fd, (struct sockaddr*)& servsock->addr, &servsock->socklen);
-    return (fd >= 0? fd : ERROR);
+    int rc = is_non_blocking? fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK) : 0;
+    return (fd >= 0 && rc == 0? fd : ERROR);
 }
 
 

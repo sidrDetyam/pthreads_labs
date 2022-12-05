@@ -5,7 +5,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <poll.h>
-#include "server_utils.h"
+#include "socket_utils.h"
 #include "common.h"
 
 #include "connection_handler.h"
@@ -39,12 +39,11 @@ int main() {
     int _i = 0;
     while (1) {
         ASSERT(poll(fds, fds_count, 1000) != -1);
-        printf("here %d %zu\n", _i++, fds_count);
+        //printf("here %d %zu\n", _i++, fds_count);
 
         if (fds[0].revents & POLLIN) {
             int new_fd;
-            ASSERT((new_fd = accept_servsock(&servsock)) != ERROR);
-            printf("connect\n");
+            ASSERT((new_fd = accept_servsock(&servsock, 0)) != ERROR);
 
             struct timeval timeout;
             timeout.tv_sec = 0;
@@ -57,6 +56,7 @@ int main() {
 
             init_context(context1 + contexts_count, new_fd);
             ++contexts_count;
+            printf("connect %zu\n", contexts_count);
         }
         for (size_t i = 1; i < fds_count; ++i) {
             int ind = find_context(context1, contexts_count, fds[i].fd);
@@ -70,6 +70,7 @@ int main() {
                         memcpy(context1 + j, context1 + j + 1, sizeof(handler_context_t));
                     }
                     --contexts_count;
+                    printf("disconnect %zu\n", contexts_count);
                 }
             }
         }

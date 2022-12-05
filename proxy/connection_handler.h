@@ -19,7 +19,6 @@
 enum HandlingStep{
     PARSING_REQ_TYPE = 1337,
     PARSING_REQ_HEADERS,
-    PARSING_REQ_BODY,
 
     CONNECT_STEP,
     SENDING_REQ,
@@ -52,13 +51,13 @@ struct HttpConnectionHandlerContext{
     response_t response;
 
     vchar cbuff;
-    size_t cppos;
+    size_t cppos; //client processing possition
 
     size_t sended;
     size_t read_;
 
     vchar sbuff;
-    size_t sppos;
+    size_t sppos; //server processing possition
     long chunk_size;
     size_t chunk_read;
 

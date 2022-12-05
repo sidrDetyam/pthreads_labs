@@ -19,11 +19,11 @@ typedef struct SERVER_SOCKET servsock_t;
 int
 create_servsock(uint16_t port, int limit, servsock_t* sock);
 
-int
+__attribute__((unused)) int
 close_servsock(servsock_t* sock);
 
 int
-accept_servsock(servsock_t* servsock);
+accept_servsock(servsock_t* servsock, int is_non_blocking);
 
 int
 name2addr(const char *host_name, uint16_t host_port, struct sockaddr_in *sock_addr);
