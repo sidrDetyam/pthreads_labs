@@ -27,13 +27,12 @@ void init_context(handler_context_t *context, int client_fd) {
     vchar_init(&context->cbuff);
     vchar_forced_alloc(&context->cbuff);
     context->cppos = 0;
-
     vchar_init(&context->sbuff);
     vchar_forced_alloc(&context->sbuff);
     context->sppos = 0;
-
     context->sended = 0;
 
+    context->connection_state = NOT_CONNECTED;
     context->client_fd = client_fd;
     context->server_fd = -1;
     context->client_events = POLLIN;
@@ -53,14 +52,14 @@ destroy_context(handler_context_t *context) {
         close(context->server_fd);
     }
 
-    context->handling_step = HANDLER_EXCEPTIONALLY;
+    context->handling_step = HANDLED_EXCEPTIONALLY;
 }
 
 
 enum Config {
     MIN_READ_BUFF_SIZE = 10000,
     DEFAULT_PORT = 80,
-    RECV_TIMEOUT_US = 250000
+    //RECV_TIMEOUT_US = 250000
 };
 
 
@@ -100,6 +99,11 @@ parsing_req_type_step(handler_context_t *context, int fd, int events) {
     }
 }
 
+
+static void
+connect_step(handler_context_t* context, int fd, int events);
+
+
 static void
 parsing_req_headers_step(handler_context_t *context, int fd, int events, int non_splitted){
     ASSERT(context->handling_step == PARSING_REQ_HEADERS &&
@@ -130,29 +134,56 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events, int non
             ASSERT_RETURN2_C(strcmp(context->request.type, "GET") == 0,
                              destroy_context(context),);
 
-            ASSERT(context->server_fd == -1);
-            ASSERT_RETURN2_C((context->server_fd = socket(AF_INET, SOCK_STREAM, 0)) >= 0,
-                             destroy_context(context),);
-
-            header_t *host_name = find_header(&context->request.headers, "Host");
-            ASSERT_RETURN2_C(host_name != NULL,
-                             destroy_context(context),);
-
-            printf("------ connecting...\n");
-            ASSERT_RETURN2_C(connect_to_host(context->server_fd, host_name->value, DEFAULT_PORT) == SUCCESS,
-                             destroy_context(context),);
-            struct timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = RECV_TIMEOUT_US;
-            ASSERT_RETURN2_C(setsockopt(context->server_fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout))==0,
-                             destroy_context(context),);
-
-            context->client_events = 0;
-            context->server_events = POLLOUT;
-            context->sended = 0;
-            context->handling_step = SENDING_REQ;
+            context->handling_step = CONNECT_STEP;
+            connect_step(context, -1, 0);
             return;
         }
+    }
+}
+
+
+static void
+connect_step(handler_context_t* context, int fd, int events){
+    if(context->connection_state == AWAIT_CONNECTION) {
+        ASSERT(context->handling_step == CONNECT_STEP &&
+               fd == context->server_fd && (events & POLLOUT));
+    }
+
+    if(context->connection_state == CONNECTED || context->connection_state == AWAIT_CONNECTION){
+        context->client_events = 0;
+        context->server_events = POLLOUT;
+        context->sended = 0;
+        context->handling_step = SENDING_REQ;
+
+        if(context->connection_state == AWAIT_CONNECTION){
+            int connection_result;
+            socklen_t _ = sizeof(connection_result);
+            ASSERT_RETURN2_C(getsockopt(context->server_fd, SOL_SOCKET, SO_ERROR, &connection_result, &_) >= 0
+                && connection_result==0,
+                             destroy_context(context),);
+            context->connection_state = CONNECTED;
+        }
+        return;
+    }
+
+    ASSERT_RETURN2_C((context->server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) >= 0,
+                     destroy_context(context),);
+
+    header_t *host_name = find_header(&context->request.headers, "Host");
+    ASSERT_RETURN2_C(host_name != NULL,
+                     destroy_context(context),);
+
+    int rc = connect_to_host(context->server_fd, host_name->value, DEFAULT_PORT);
+    if(rc==0){
+        context->connection_state = CONNECTED;
+    }
+    else if(errno == EINPROGRESS){
+        context->client_events = 0;
+        context->server_events = POLLOUT;
+        context->connection_state = AWAIT_CONNECTION;
+    }
+    else{
+        destroy_context(context);
     }
 }
 
@@ -329,6 +360,10 @@ handle(handler_context_t *context, int fd, int events) {
     }
     if (context->handling_step == PARSING_REQ_HEADERS) {
         parsing_req_headers_step(context, fd, events, non_splitted);
+        return;
+    }
+    if (context->handling_step == CONNECT_STEP){
+        connect_step(context, fd, events);
         return;
     }
     if (context->handling_step == SENDING_REQ) {

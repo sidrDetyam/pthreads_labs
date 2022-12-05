@@ -64,8 +64,6 @@ name2addr(const char *host_name, uint16_t host_port, struct sockaddr_in *sock_ad
 int
 connect_to_host(int fd, const char *host_name, uint16_t host_port){
     struct sockaddr_in host_addr;
-    ASSERT_RETURN(name2addr(host_name, host_port, &host_addr) == SUCCESS);
-    ASSERT_RETURN(connect(fd, (struct sockaddr *) &host_addr, sizeof(host_addr))==0);
-
-    return SUCCESS;
+    ASSERT_RETURN2(name2addr(host_name, host_port, &host_addr) == SUCCESS, -1);
+    return connect(fd, (struct sockaddr *) &host_addr, sizeof(host_addr));
 }

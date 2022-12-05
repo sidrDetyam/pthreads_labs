@@ -21,6 +21,7 @@ enum HandlingStep{
     PARSING_REQ_HEADERS,
     PARSING_REQ_BODY,
 
+    CONNECT_STEP,
     SENDING_REQ,
 
     PARSING_RESP_CODE,
@@ -30,13 +31,20 @@ enum HandlingStep{
     SENDING_RESP,
 
     HANDLED,
-    HANDLER_EXCEPTIONALLY
+    HANDLED_EXCEPTIONALLY
+};
+
+enum ConnectionState{
+    NOT_CONNECTED = 4242,
+    AWAIT_CONNECTION,
+    CONNECTED
 };
 
 
 struct HttpConnectionHandlerContext{
     int client_fd;
     int server_fd;
+    int connection_state;
     int client_events;
     int server_events;
 

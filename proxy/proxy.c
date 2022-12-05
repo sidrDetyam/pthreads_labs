@@ -1,13 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
 #include <poll.h>
-#include <limits.h>
-#include <pthread.h>
 #include "server_utils.h"
 #include "common.h"
 
@@ -27,7 +24,7 @@ int find_context(handler_context_t *context1, size_t cnt, int fd) {
 
 int main() {
     servsock_t servsock;
-    ASSERT(create_servsock(8080, 10, &servsock) == SUCCESS);
+    ASSERT(create_servsock(4242, 10, &servsock) == SUCCESS);
 
     struct pollfd fds[200];
 
@@ -68,7 +65,7 @@ int main() {
                 || context1[ind].server_fd == fds[i].fd && (context1[ind].server_events & fds[i].revents)) {
 
                 handle(context1 + ind, fds[i].fd, fds[i].revents);
-                if (context1[ind].handling_step == HANDLED || context1[ind].handling_step == HANDLER_EXCEPTIONALLY) {
+                if (context1[ind].handling_step == HANDLED || context1[ind].handling_step == HANDLED_EXCEPTIONALLY) {
                     for (int j = ind; j < contexts_count; ++j) {
                         memcpy(context1 + j, context1 + j + 1, sizeof(handler_context_t));
                     }
@@ -91,8 +88,4 @@ int main() {
             }
         }
     }
-
-    close_servsock(&servsock);
-
-    return 0;
 }
