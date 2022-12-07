@@ -62,7 +62,7 @@ enum Config {
     MIN_READ_BUFF_SIZE = 10000,
     DEFAULT_PORT = 80,
     //RECV_TIMEOUT_US = 250000,
-    KEEP_ALIVE_SUPPORT = 1
+    KEEP_ALIVE_SUPPORT = 0
 };
 
 

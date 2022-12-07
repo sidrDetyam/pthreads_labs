@@ -5,7 +5,7 @@
 #include "hash_map.h"
 #include "common.h"
 
-#define ELEMENT_TYPE pair_t;
+#define ELEMENT_TYPE pair_t
 #include "cvector_impl.h"
 
 void
