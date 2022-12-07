@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 
 #include "http_header_parser.h"
+#include "hash_map.h"
 
 
 #define ELEMENT_TYPE char
@@ -61,6 +62,8 @@ struct HttpConnectionHandlerContext{
     long chunk_size;
     size_t chunk_read;
 
+    hash_map_t *hm;
+
     int handling_step;
 };
 typedef struct HttpConnectionHandlerContext handler_context_t;
@@ -71,7 +74,7 @@ typedef struct HttpConnectionHandlerContext handler_context_t;
 
 
 void
-init_context(handler_context_t* context, int client_fd);
+init_context(handler_context_t* context, int client_fd, hash_map_t* hm);
 
 void
 destroy_context(handler_context_t* context);

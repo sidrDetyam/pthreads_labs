@@ -25,6 +25,7 @@ struct REQUEST{
 };
 typedef struct REQUEST request_t;
 
+
 struct RESPONSE{
     char* version;
     char* code;

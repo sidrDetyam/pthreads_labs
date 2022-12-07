@@ -59,4 +59,6 @@ do{\
 
 #define MIN(a__, b__) ((a__) > (b__) ? (b__) : (a__))
 
+#define ABS(a__) ((a__) > 0? (a__) : (-(a__)))
+
 #endif //PTHREAD_COMMON_H

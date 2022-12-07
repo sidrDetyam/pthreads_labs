@@ -21,7 +21,7 @@
 //#include "cvector_impl.h"
 
 
-void init_context(handler_context_t *context, int client_fd) {
+void init_context(handler_context_t *context, int client_fd, hash_map_t* hm) {
     request_init(&context->request);
     response_init(&context->response);
 
@@ -38,6 +38,7 @@ void init_context(handler_context_t *context, int client_fd) {
     context->server_fd = -1;
     context->client_events = POLLIN;
     context->server_events = 0;
+    context->hm = hm;
     context->handling_step = PARSING_REQ_TYPE;
 }
 
@@ -61,9 +62,8 @@ enum Config {
     MIN_READ_BUFF_SIZE = 10000,
     DEFAULT_PORT = 80,
     //RECV_TIMEOUT_US = 250000,
-    //KEEP_ALIVE_SUPPORT = 1
+    KEEP_ALIVE_SUPPORT = 1
 };
-#define KEEP_ALIVE_SUPPORT 0
 
 
 static int

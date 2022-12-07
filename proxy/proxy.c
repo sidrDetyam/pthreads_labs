@@ -9,6 +9,7 @@
 #include "common.h"
 
 #include "connection_handler.h"
+#include "hash_map.h"
 
 
 int find_context(handler_context_t *context1, size_t cnt, int fd) {
@@ -20,6 +21,27 @@ int find_context(handler_context_t *context1, size_t cnt, int fd) {
 
     return -1;
 }
+
+
+int request_hash(void* req){
+    return 1;
+}
+
+int request_equals(void* req1_, void* req2_){
+    request_t *req1 = req1_;
+    request_t *req2 = req2_;
+
+    header_t* host1 = find_header(&req1->headers, "Host");
+    header_t* host2 = find_header(&req2->headers, "Host");
+    if(host1 == NULL || host2 == NULL){
+        return 0;
+    }
+
+    return strcmp(host1->value, host2->value)==0 && strcmp(req1->type, req2->type)==0
+    && strcmp(req1->version, req2->version)==0 && strcmp(req1->uri, req2->uri)==0;
+}
+
+
 
 
 int main() {
@@ -34,6 +56,9 @@ int main() {
     fds[0].fd = servsock.fd;
     fds[0].events = POLLIN;
     size_t fds_count = 1;
+
+    hash_map_t hm;
+    hash_map_init(&hm, sizeof(request_t), sizeof(response_t), request_hash, request_equals);
 
 
     int _i = 0;
@@ -54,7 +79,7 @@ int main() {
                 exit(1);
             }
 
-            init_context(context1 + contexts_count, new_fd);
+            init_context(context1 + contexts_count, new_fd, &hm);
             ++contexts_count;
             printf("connect %zu\n", contexts_count);
         }
