@@ -21,6 +21,9 @@ request_init(request_t* request){
 
 __attribute__((unused)) void
 request_destroy(request_t* request){
+    if(request == NULL){
+        return;
+    }
     free(request->type);
     free(request->uri);
     free(request->version);
@@ -100,6 +103,9 @@ find_header(vheader_t *headers, const char* type){
 
 void
 response_init(response_t* response){
+    if(response == NULL){
+        return;
+    }
     response->body = NULL;
     response->version = NULL;
     response->code = NULL;

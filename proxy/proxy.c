@@ -46,7 +46,7 @@ int request_equals(void* req1_, void* req2_){
 
 int main() {
     servsock_t servsock;
-    ASSERT(create_servsock(4242, 10, &servsock) == SUCCESS);
+    ASSERT(create_servsock(4242, 100, &servsock) == SUCCESS);
 
     struct pollfd fds[200];
 
@@ -58,7 +58,7 @@ int main() {
     size_t fds_count = 1;
 
     hash_map_t hm;
-    hash_map_init(&hm, sizeof(request_t), sizeof(response_t), request_hash, request_equals);
+    hash_map_init(&hm, sizeof(request_t), sizeof(vchar), request_hash, request_equals);
 
 
     int _i = 0;

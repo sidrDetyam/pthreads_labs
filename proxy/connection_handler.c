@@ -17,9 +17,6 @@
 
 #include "cvector_impl.h"
 
-//#define ELEMENT_TYPE handler_context_t;
-//#include "cvector_impl.h"
-
 
 void init_context(handler_context_t *context, int client_fd, hash_map_t* hm) {
     request_init(&context->request);
@@ -58,13 +55,56 @@ destroy_context(handler_context_t *context) {
 }
 
 
+static char*
+str_copy(const char* src){
+    if(src == NULL){
+        return NULL;
+    }
+    size_t len = strlen(src);
+    char* copy = malloc(len+1);
+    ASSERT(copy != NULL);
+    memcpy(copy, src, len+1);
+    return copy;
+}
+
+static void
+cache(handler_context_t *context){
+    request_t *req_copy = malloc(sizeof(request_t));
+    vchar* resp_buff_copy = malloc(sizeof(vchar));
+    ASSERT(req_copy != NULL && resp_buff_copy != NULL);
+    request_init(req_copy);
+    req_copy->type = str_copy(context->request.type);
+    req_copy->uri = str_copy(context->request.uri);
+    req_copy->version = str_copy(context->request.version);
+    req_copy->body = str_copy(context->request.body);
+
+    for(size_t i=0; i<context->request.headers.cnt; ++i){
+        header_t copy;
+        header_t *orig = vheader_t_get(&context->request.headers, i);
+        copy.value = str_copy(orig->value);
+        copy.type = str_copy(orig->type);
+        vheader_t_push_back(&req_copy->headers, &copy);
+    }
+
+    vchar_init(resp_buff_copy);
+    resp_buff_copy->cnt = context->sbuff.cnt;
+    resp_buff_copy->capacity = context->sbuff.capacity;
+    resp_buff_copy->ptr = malloc(resp_buff_copy->capacity);
+    ASSERT(resp_buff_copy->ptr != NULL);
+    memcpy(resp_buff_copy->ptr, context->sbuff.ptr, context->sbuff.cnt);
+
+    hash_map_put(context->hm, req_copy, resp_buff_copy);
+}
+
+
 enum Config {
     MIN_READ_BUFF_SIZE = 10000,
     DEFAULT_PORT = 80,
-    //RECV_TIMEOUT_US = 250000,
-    KEEP_ALIVE_SUPPORT = 0
+    //RECV_TIMEOUT_US = 250000
 };
 
+//#define CACHED
+//#define KEEP_ALIVE
 
 static int
 read_to_vchar(int fd, vchar *buff, size_t *read_) {
@@ -138,9 +178,25 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events, int non
             ASSERT_RETURN2_C(strcmp(context->request.type, "GET") == 0,
                              destroy_context(context),);
 
+
+#ifdef CACHED
+            vchar* cached_resp = (vchar*) hash_map_get(context->hm, &context->request);
+            if(cached_resp != NULL){
+                context->sbuff.cnt = cached_resp->cnt;
+                context->sbuff.capacity = cached_resp->capacity;
+                context->sbuff.ptr = malloc(cached_resp->capacity);
+                ASSERT(context->sbuff.ptr != NULL);
+                memcpy(context->sbuff.ptr, cached_resp->ptr, context->sbuff.cnt);
+                context->client_events = POLLOUT;
+                context->server_events = 0;
+                context->handling_step = SENDING_RESP;
+            }
+#endif
+
             context->handling_step = CONNECT_STEP;
             connect_step(context, -1, 0);
             return;
+
         }
     }
 }
@@ -293,6 +349,7 @@ parsing_resp_body(handler_context_t *context, int fd, int events, int non_splitt
         context->server_events = 0;
         context->sppos = context->sbuff.cnt;
         context->handling_step = SENDING_RESP;
+        cache(context);
         return;
     }
 
@@ -322,6 +379,7 @@ parsing_resp_body(handler_context_t *context, int fd, int events, int non_splitt
                     memcpy(context->response.body,
                            context->sbuff.ptr + context->sbuff.cnt - context->read_, context->read_);
                     context->handling_step = SENDING_RESP;
+                    cache(context);
                     return;
                 }
 
@@ -354,8 +412,9 @@ send_resp_step(handler_context_t *context, int fd, int events) {
     send_resp_in_receiving(context, fd, events);
 
     if (context->sended == context->sbuff.cnt) {
+#ifdef KEEP_ALIVE
         header_t *connection = find_header(&context->response.headers, "Connection");
-        if (connection != NULL && strcasecmp(connection->value, "Keep-Alive") == 0 && KEEP_ALIVE_SUPPORT) {
+        if (connection != NULL && strcasecmp(connection->value, "Keep-Alive") == 0) {
             request_destroy(&context->request);
             response_destroy(&context->response);
             request_init(&context->request);
@@ -377,15 +436,22 @@ send_resp_step(handler_context_t *context, int fd, int events) {
             parsing_req_type_step(context, -1, 0, 1);
             return;
         }
+#endif
+        //destroy_context_on_cached(context);
         destroy_context(context);
         context->handling_step = HANDLED;
     }
 }
 
+int last_fd = -1;
 
 void
 handle(handler_context_t *context, int fd, int events) {
     int non_splitted = 0;
+    if(context->client_fd != last_fd){
+        last_fd = context->client_fd;
+        printf("%d\n", context->client_fd);
+    }
 
     if (context->handling_step == PARSING_REQ_TYPE) {
         parsing_req_type_step(context, fd, events, non_splitted);
