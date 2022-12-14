@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <poll.h>
+#include <signal.h>
+
 #include "socket_utils.h"
 #include "common.h"
 
@@ -44,7 +46,10 @@ int request_equals(void* req1_, void* req2_){
 
 
 
+
 int main() {
+    sigaction(SIGPIPE, &(struct sigaction){SIG_IGN}, NULL);
+
     servsock_t servsock;
     ASSERT(create_servsock(4242, 100, &servsock) == SUCCESS);
 
@@ -63,12 +68,24 @@ int main() {
 
     int _i = 0;
     while (1) {
-        ASSERT(poll(fds, fds_count, 1000) != -1);
+        int cnt_fds = poll(fds, fds_count, 500);
+        if(cnt_fds == 0){
+            fprintf(stderr, "никого\n");
+//            for(int i=0; i < contexts_count; ++i){
+//                destroy_context(context1 + i);
+//            }
+//            contexts_count = 0;
+//            fds[0].fd = servsock.fd;
+//            fds[0].events = POLLIN;
+//            fds_count = 1;
+            continue;
+        }
+        ASSERT( cnt_fds != -1);
         //printf("here %d %zu\n", _i++, fds_count);
 
         if (fds[0].revents & POLLIN) {
             int new_fd;
-            ASSERT((new_fd = accept_servsock(&servsock, 0)) != ERROR);
+            ASSERT((new_fd = accept_servsock(&servsock, 1)) != ERROR);
 
             struct timeval timeout;
             timeout.tv_sec = 0;
@@ -84,6 +101,9 @@ int main() {
             printf("connect %zu\n", contexts_count);
         }
         for (size_t i = 1; i < fds_count; ++i) {
+            if(fds[i].revents == 0){
+                continue;
+            }
             int ind = find_context(context1, contexts_count, fds[i].fd);
             ASSERT(ind != -1);
             if (context1[ind].client_fd == fds[i].fd && (context1[ind].client_events & fds[i].revents)
@@ -95,7 +115,7 @@ int main() {
                         memcpy(context1 + j, context1 + j + 1, sizeof(handler_context_t));
                     }
                     --contexts_count;
-                    printf("disconnect %zu\n", contexts_count);
+                    printf("disconnect %d %zu\n", context1[ind].client_fd, contexts_count);
                 }
             }
         }

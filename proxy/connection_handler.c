@@ -41,6 +41,7 @@ void init_context(handler_context_t *context, int client_fd, hash_map_t* hm) {
 
 void
 destroy_context(handler_context_t *context) {
+    printf("%d\n", context->client_fd);
     request_destroy(&context->request);
     response_destroy(&context->response);
     vchar_free(&context->cbuff);
@@ -98,7 +99,7 @@ cache(handler_context_t *context){
 
 
 enum Config {
-    MIN_READ_BUFF_SIZE = 10000,
+    MIN_READ_BUFF_SIZE = 1000000,
     DEFAULT_PORT = 80,
     //RECV_TIMEOUT_US = 250000
 };
@@ -109,6 +110,7 @@ enum Config {
 static int
 read_to_vchar(int fd, vchar *buff, size_t *read_) {
     vchar_alloc2(buff, MIN_READ_BUFF_SIZE + 1);
+    //printf("read!!\n");
     ssize_t cnt = read(fd, &buff->ptr[buff->cnt], MIN_READ_BUFF_SIZE);
     if (cnt == -1 || cnt == 0) {
         return ERROR;
@@ -120,6 +122,12 @@ read_to_vchar(int fd, vchar *buff, size_t *read_) {
     buff->ptr[buff->cnt] = '\0';
     return SUCCESS;
 }
+
+
+enum STEP_RETURN{
+    CONTINUE,
+    WAIT
+};
 
 
 static void
@@ -182,6 +190,7 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events, int non
 #ifdef CACHED
             vchar* cached_resp = (vchar*) hash_map_get(context->hm, &context->request);
             if(cached_resp != NULL){
+                fprintf(stderr, "from cache\n");
                 context->sbuff.cnt = cached_resp->cnt;
                 context->sbuff.capacity = cached_resp->capacity;
                 context->sbuff.ptr = malloc(cached_resp->capacity);
@@ -285,14 +294,14 @@ parsing_resp_code_step(handler_context_t *context, int fd, int events) {
 }
 
 
-static void
+static int
 parsing_resp_headers_step(handler_context_t *context, int fd, int events, int non_splitted) {
     ASSERT(context->handling_step == PARSING_RESP_HEADERS &&
            fd == context->server_fd && (events & POLLIN));
 
     if (!non_splitted) {
         ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, NULL) == SUCCESS,
-                         destroy_context(context),);
+                         destroy_context(context), WAIT);
     }
 
     while (1) {
@@ -302,10 +311,10 @@ parsing_resp_headers_step(handler_context_t *context, int fd, int events, int no
         context->sppos = sppos - context->sbuff.ptr;
 
         ASSERT_RETURN2_C(status != PARSING_ERROR,
-                         destroy_context(context),);
+                         destroy_context(context), WAIT);
 
         if (status == NO_END_OF_LINE) {
-            return;
+            return WAIT;
         }
         if (status == OK) {
             vheader_t_push_back(&context->response.headers, &header);
@@ -314,8 +323,16 @@ parsing_resp_headers_step(handler_context_t *context, int fd, int events, int no
         if (status == END_OF_HEADER) {
             header_t *cl_header = find_header(&context->response.headers, "Content-Length");
             header_t *ch_header = find_header(&context->response.headers, "Transfer-Encoding");
-            ASSERT_RETURN2_C(ch_header != NULL || cl_header != NULL,
-                             destroy_context(context),);
+            ///TODO
+            if(cl_header==NULL && ch_header == NULL){
+                context->client_events = POLLOUT;
+                context->server_events = 0;
+                context->sended = 0;
+                context->handling_step = SENDING_RESP;
+                return WAIT;
+            }
+//            ASSERT_RETURN2_C(ch_header != NULL || cl_header != NULL,
+//                             destroy_context(context),);
 
             context->response.content_length = cl_header != NULL ?
                                                (long) strtol(cl_header->value, NULL, 10) : -1;
@@ -325,7 +342,7 @@ parsing_resp_headers_step(handler_context_t *context, int fd, int events, int no
             context->client_events = POLLOUT;
             context->sended = 0;
             context->handling_step = PARSING_RESP_BODY;
-            return;
+            return CONTINUE;
         }
     }
 }
@@ -341,15 +358,22 @@ parsing_resp_body(handler_context_t *context, int fd, int events, int non_splitt
         ASSERT_RETURN2_C(read_to_vchar(context->server_fd, &context->sbuff, &read_) == SUCCESS,
                          destroy_context(context),);
         context->read_ += read_;
+        ///TODO
+        if(read_ > 0){
+            context->client_events = POLLOUT;
+        }
     }
 
+    ///TODO
     if (context->response.content_length != -1
-        && context->response.content_length == context->read_) {
+        && context->response.content_length <= context->read_) {
         context->client_events = POLLOUT;
         context->server_events = 0;
         context->sppos = context->sbuff.cnt;
         context->handling_step = SENDING_RESP;
+#ifdef CACHED
         cache(context);
+#endif
         return;
     }
 
@@ -379,7 +403,9 @@ parsing_resp_body(handler_context_t *context, int fd, int events, int non_splitt
                     memcpy(context->response.body,
                            context->sbuff.ptr + context->sbuff.cnt - context->read_, context->read_);
                     context->handling_step = SENDING_RESP;
+#ifdef CACHED
                     cache(context);
+#endif
                     return;
                 }
 
@@ -404,6 +430,9 @@ send_resp_in_receiving(handler_context_t *context, int fd, int events) {
         ASSERT_RETURN2_C(cnt > 0, destroy_context(context),);
         context->sended += cnt;
     }
+    else{
+        context->client_events = 0;
+    }
 }
 
 
@@ -427,6 +456,8 @@ send_resp_step(handler_context_t *context, int fd, int events) {
             context->cbuff.ptr[context->cbuff.cnt] = '\0';
             context->cppos = 0;
 
+            //context->connection_state = NOT_CONNECTED;
+            //close(context->server_fd);
             context->sbuff.cnt = 0;
             context->sppos = 0;
             context->client_events = POLLIN;
@@ -443,41 +474,45 @@ send_resp_step(handler_context_t *context, int fd, int events) {
     }
 }
 
-int last_fd = -1;
 
 void
 handle(handler_context_t *context, int fd, int events) {
     int non_splitted = 0;
-    if(context->client_fd != last_fd){
-        last_fd = context->client_fd;
-        printf("%d\n", context->client_fd);
-    }
 
     if (context->handling_step == PARSING_REQ_TYPE) {
+        //fprintf(stderr, "parsing req type\n");
         parsing_req_type_step(context, fd, events, non_splitted);
         non_splitted = 1;
     }
     if (context->handling_step == PARSING_REQ_HEADERS) {
+        //fprintf(stderr, "parsing req head\n");
         parsing_req_headers_step(context, fd, events, non_splitted);
         return;
     }
     if (context->handling_step == CONNECT_STEP) {
+        //fprintf(stderr, "connect\n");
         connect_step(context, fd, events);
         return;
     }
     if (context->handling_step == SENDING_REQ) {
+        //fprintf(stderr, "sending req\n");
         sending_req_step(context, fd, events);
         return;
     }
     if (context->handling_step == PARSING_RESP_CODE) {
+        //fprintf(stderr, "parsing resp code\n");
         parsing_resp_code_step(context, fd, events);
         non_splitted = 1;
     }
     if (context->handling_step == PARSING_RESP_HEADERS) {
-        parsing_resp_headers_step(context, fd, events, non_splitted);
+        //fprintf(stderr, "parsing resp head\n");
+        if(parsing_resp_headers_step(context, fd, events, non_splitted) == WAIT){
+            return;
+        }
         non_splitted = 1;
     }
     if (context->handling_step == PARSING_RESP_BODY) {
+        //fprintf(stderr, "parsing resp body\n");
         if (fd == context->server_fd) {
             parsing_resp_body(context, fd, events, non_splitted);
         }
@@ -487,6 +522,7 @@ handle(handler_context_t *context, int fd, int events) {
         return;
     }
     if (context->handling_step == SENDING_RESP) {
+        //fprintf(stderr, "sending resp\n");
         send_resp_step(context, fd, events);
     }
 }
