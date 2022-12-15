@@ -5,6 +5,8 @@
 #ifndef PTHREAD___HASH_MAP_H
 #define PTHREAD___HASH_MAP_H
 
+#include <pthread.h>
+
 struct Pair {
     void* key;
     void* value;
@@ -26,6 +28,7 @@ struct HashMap{
     struct vpair_t** buckets;
     size_t key_size;
     size_t value_size;
+    pthread_mutex_t mutex;
 };
 typedef struct HashMap hash_map_t;
 

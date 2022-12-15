@@ -26,6 +26,7 @@ void init_context(handler_context_t *context, int client_fd, hash_map_t* hm) {
     context->sppos = 0;
     context->sended = 0;
 
+    context->is_from_cache = 0;
     context->connection_state = NOT_CONNECTED;
     context->client_fd = client_fd;
     context->server_fd = -1;
@@ -35,13 +36,19 @@ void init_context(handler_context_t *context, int client_fd, hash_map_t* hm) {
     context->handling_step = PARSING_REQ_TYPE;
 }
 
+
 void
 destroy_context(handler_context_t *context) {
     printf("%d\n", context->client_fd);
     request_destroy(&context->request);
     response_destroy(&context->response);
+    if(context->is_from_cache){
+        vchar_init(&context->sbuff);
+    }
+    else{
+        vchar_free(&context->sbuff);
+    }
     vchar_free(&context->cbuff);
-    vchar_free(&context->sbuff);
 
     close(context->client_fd);
     if (context->server_fd != -1) {
@@ -100,7 +107,7 @@ enum Config {
     //RECV_TIMEOUT_US = 250000
 };
 
-//#define CACHED
+#define CACHED
 //#define KEEP_ALIVE
 
 static int
@@ -194,23 +201,24 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events, int non
 #ifdef CACHED
             vchar* cached_resp = (vchar*) hash_map_get(context->hm, &context->request);
             if(cached_resp != NULL){
+                context->is_from_cache = 1;
                 fprintf(stderr, "from cache\n");
                 context->sbuff.cnt = cached_resp->cnt;
                 context->sbuff.capacity = cached_resp->capacity;
-                context->sbuff.ptr = malloc(cached_resp->capacity);
-                ASSERT(context->sbuff.ptr != NULL);
-                memcpy(context->sbuff.ptr, cached_resp->ptr, context->sbuff.cnt);
+                context->sbuff.ptr = cached_resp->ptr;
+//                context->sbuff.ptr = malloc(cached_resp->capacity);
+//                ASSERT(context->sbuff.ptr != NULL);
+//                memcpy(context->sbuff.ptr, cached_resp->ptr, context->sbuff.cnt);
                 context->client_events = POLLOUT;
                 context->server_events = 0;
                 context->handling_step = SENDING_RESP;
                 return;
             }
 #endif
-
+            context->is_from_cache = 0;
             context->handling_step = CONNECT_STEP;
             connect_step(context, -1, 0);
             return;
-
         }
     }
 }
@@ -404,9 +412,9 @@ parsing_resp_body(handler_context_t *context, int fd, int events, int non_splitt
                     context->client_events = POLLOUT;
                     context->server_events = 0;
                     context->response.content_length = (long) context->read_;
-                    ASSERT((context->response.body = malloc(context->read_ + 1)) != NULL);
-                    memcpy(context->response.body,
-                           context->sbuff.ptr + context->sbuff.cnt - context->read_, context->read_);
+//                    ASSERT((context->response.body = malloc(context->read_ + 1)) != NULL);
+//                    memcpy(context->response.body,
+//                           context->sbuff.ptr + context->sbuff.cnt - context->read_, context->read_);
                     context->handling_step = SENDING_RESP;
 #ifdef CACHED
                     cache(context);

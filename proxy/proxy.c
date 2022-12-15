@@ -25,33 +25,33 @@ int find_context(handler_context_t *context1, size_t cnt, int fd) {
 }
 
 
-int request_hash(void* req){
+int request_hash(void *req) {
     return 1;
 }
 
-int request_equals(void* req1_, void* req2_){
+int request_equals(void *req1_, void *req2_) {
     request_t *req1 = req1_;
     request_t *req2 = req2_;
+    static const char *headers[] = {"Host", "Range", NULL};
 
-    header_t* host1 = find_header(&req1->headers, "Host");
-    header_t* host2 = find_header(&req2->headers, "Host");
+    int eq = strcmp(req1->type, req2->type) == 0
+            && strcmp(req1->version, req2->version) == 0
+            && strcmp(req1->uri, req2->uri) == 0;
 
-    int res = host1 != NULL && host2 != NULL && strcmp(host1->value, host2->value)==0 && strcmp(req1->type, req2->type)==0
-                                                && strcmp(req1->version, req2->version)==0 && strcmp(req1->uri, req2->uri)==0;
-
-    if(res == 0){
-        return 0;
+    for (const char **it = headers; *it != NULL && eq; ++it) {
+        header_t *host1 = find_header(&req1->headers, *it);
+        header_t *host2 = find_header(&req2->headers, *it);
+        if (host1 != NULL && host2 != NULL) {
+            eq = strcmp(host1->value, host2->value) == 0;
+        }
     }
 
-    return 1;
+    return eq;
 }
-
-
-
 
 
 int main() {
-    sigaction(SIGPIPE, &(struct sigaction){SIG_IGN}, NULL);
+    sigaction(SIGPIPE, &(struct sigaction) {SIG_IGN}, NULL);
 
     servsock_t servsock;
     ASSERT(create_servsock(4242, 100, &servsock) == SUCCESS);
@@ -72,7 +72,7 @@ int main() {
     int _i = 0;
     while (1) {
         int cnt_fds = poll(fds, fds_count, 500);
-        if(cnt_fds == 0){
+        if (cnt_fds == 0) {
             fprintf(stderr, "никого %d\n", fds_count);
 //            for(int i=0; i < contexts_count; ++i){
 //                destroy_context(context1 + i);
@@ -83,7 +83,7 @@ int main() {
 //            fds_count = 1;
             continue;
         }
-        ASSERT( cnt_fds != -1);
+        ASSERT(cnt_fds != -1);
         //printf("here %d %zu\n", _i++, fds_count);
 
         if (fds[0].revents & POLLIN) {
@@ -104,11 +104,14 @@ int main() {
             printf("connect %zu\n", contexts_count);
         }
         for (size_t i = 1; i < fds_count; ++i) {
-            if(fds[i].revents == 0){
+            if (fds[i].revents == 0) {
                 continue;
             }
             int ind = find_context(context1, contexts_count, fds[i].fd);
-            ASSERT(ind != -1);
+            if (ind == -1) {
+                continue;
+            }
+
             if (context1[ind].client_fd == fds[i].fd && (context1[ind].client_events & fds[i].revents)
                 || context1[ind].server_fd == fds[i].fd && (context1[ind].server_events & fds[i].revents)) {
 

@@ -48,13 +48,14 @@ struct HttpConnectionHandlerContext{
     response_t response;
 
     vchar cbuff;
-    size_t cppos; //client processing possition
+    size_t cppos; //client processing position
 
     size_t sended;
     size_t read_;
 
     vchar sbuff;
-    size_t sppos; //server processing possition
+    int is_from_cache;
+    size_t sppos; //server processing position
     long chunk_size;
     size_t chunk_read;
 
