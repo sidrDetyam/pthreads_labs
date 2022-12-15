@@ -16,6 +16,9 @@ typedef struct HEADER header_t;
 #define ELEMENT_TYPE header_t
 #include "cvector_def.h"
 
+#define ELEMENT_TYPE char
+#include "cvector_def.h"
+
 struct REQUEST{
     char* type;
     char* uri;
@@ -68,5 +71,8 @@ response_destroy(response_t* response);
 
 int
 parse_response_code(const char** buf, response_t* response);
+
+void
+request2vchar(request_t* req, vchar* buff);
 
 #endif //PTHREAD_HTTP_HEADER_PARSER_H

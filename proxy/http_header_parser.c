@@ -8,7 +8,12 @@
 
 #define ELEMENT_TYPE header_t
 #include "cvector_impl.h"
+
+#define ELEMENT_TYPE char
+#include "cvector_impl.h"
+
 #include "common.h"
+
 
 void
 request_init(request_t* request){
@@ -93,7 +98,7 @@ header_t*
 find_header(vheader_t *headers, const char* type){
     for(size_t i=0; i<headers->cnt; ++i){
         header_t* hi = vheader_t_get(headers, i);
-        if(strcmp(hi->type, type) == 0){
+        if(strcasecmp(hi->type, type) == 0){
             return hi;
         }
     }
@@ -143,4 +148,33 @@ parse_response_code(const char** buf, response_t* response){
 
     *buf = crlf+2;
     return OK;
+}
+
+static void
+add_string2vchar(const char* str, vchar* buff){
+    size_t len = strlen(str);
+    vchar_alloc2(buff, len);
+    memcpy(buff->ptr+buff->cnt, str, len);
+    buff->cnt += len;
+}
+
+static void
+add_strings2vchar(const char** strs, vchar* buff){
+    for(const char** it = strs; *it != NULL; ++it){
+        add_string2vchar(*it, buff);
+    }
+}
+
+void
+request2vchar(request_t* req, vchar* buff){
+    buff->cnt = 0;
+    const char* parts[] = {req->type, " ", req->uri, " ", req->version, "\r\n", NULL};
+    add_strings2vchar(parts, buff);
+
+    for(size_t i=0; i<req->headers.cnt; ++i){
+        header_t* header = vheader_t_get(&req->headers, i);
+        const char* hparts[] = {header->type, ": ", header->value, "\r\n", NULL};
+        add_strings2vchar(hparts, buff);
+    }
+    add_string2vchar("\r\n", buff);
 }

@@ -13,10 +13,6 @@
 #include "hash_map.h"
 
 
-#define ELEMENT_TYPE char
-#include "cvector_def.h"
-
-
 enum HandlingStep{
     PARSING_REQ_TYPE = 1337,
     PARSING_REQ_HEADERS,

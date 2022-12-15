@@ -35,12 +35,15 @@ int request_equals(void* req1_, void* req2_){
 
     header_t* host1 = find_header(&req1->headers, "Host");
     header_t* host2 = find_header(&req2->headers, "Host");
-    if(host1 == NULL || host2 == NULL){
+
+    int res = host1 != NULL && host2 != NULL && strcmp(host1->value, host2->value)==0 && strcmp(req1->type, req2->type)==0
+                                                && strcmp(req1->version, req2->version)==0 && strcmp(req1->uri, req2->uri)==0;
+
+    if(res == 0){
         return 0;
     }
 
-    return strcmp(host1->value, host2->value)==0 && strcmp(req1->type, req2->type)==0
-    && strcmp(req1->version, req2->version)==0 && strcmp(req1->uri, req2->uri)==0;
+    return 1;
 }
 
 
@@ -70,7 +73,7 @@ int main() {
     while (1) {
         int cnt_fds = poll(fds, fds_count, 500);
         if(cnt_fds == 0){
-            fprintf(stderr, "никого\n");
+            fprintf(stderr, "никого %d\n", fds_count);
 //            for(int i=0; i < contexts_count; ++i){
 //                destroy_context(context1 + i);
 //            }
@@ -120,6 +123,7 @@ int main() {
             }
         }
         fds[0].fd = servsock.fd;
+        fds[0].events = POLLIN;
         fds_count = 1;
         for (size_t i = 0; i < contexts_count; ++i) {
             if (context1[i].client_events != 0) {

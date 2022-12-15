@@ -13,10 +13,6 @@
 #include "common.h"
 #include "socket_utils.h"
 
-#define ELEMENT_TYPE char
-
-#include "cvector_impl.h"
-
 
 void init_context(handler_context_t *context, int client_fd, hash_map_t* hm) {
     request_init(&context->request);
@@ -186,6 +182,14 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events, int non
             ASSERT_RETURN2_C(strcmp(context->request.type, "GET") == 0,
                              destroy_context(context),);
 
+#ifndef KEEP_ALIVE
+            header_t* connection = find_header(&context->request.headers, "Connection");
+            if(connection!=NULL){
+                free(connection->value);
+                connection->value = str_copy("close");
+                request2vchar(&context->request, &context->cbuff);
+            }
+#endif
 
 #ifdef CACHED
             vchar* cached_resp = (vchar*) hash_map_get(context->hm, &context->request);
@@ -199,6 +203,7 @@ parsing_req_headers_step(handler_context_t *context, int fd, int events, int non
                 context->client_events = POLLOUT;
                 context->server_events = 0;
                 context->handling_step = SENDING_RESP;
+                return;
             }
 #endif
 
